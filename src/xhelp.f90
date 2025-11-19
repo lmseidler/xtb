@@ -77,7 +77,7 @@ write(iunit,'(3x,a)') &
    "",&
    "for DIPRO refer to:",&
    "* J. Kohn, N. Gildemeister, S. Grimme, D. Fazzi, A. Hansen,",&
-   "  J. Chem. Phys., 2023, just accepted.",&
+   "  J. Chem. Phys. 159, 144106 (2023). DOI: 10.1063/5.0167484",&
    "",&
    "for PTB refer to:",&
    "* S. Grimme, M. Mueller, A. Hansen, J. Chem. Phys., 2023, 158, 124111.",&
@@ -248,6 +248,9 @@ subroutine help(iunit)
    "-o, --opt [LEVEL]",&
    "    call ancopt(3) to perform a geometry optimization, levels from crude, sloppy,", &
    "    loose, normal (default), tight, verytight to extreme can be chosen",&
+   "",&
+   "--cycles [int]",&
+   "    maximum number of optimization cycles.",&
    "",&
    "--hess",&
    "    perform a numerical hessian calculation on input geometry",&
@@ -462,6 +465,9 @@ subroutine help_legacy
    write(id,'(3x,''    --opt [level] '','// &
    &          'x,''optimize at GFNn-xTB level, level can be one of'',' // &
    &      '/,22x,''crude, vloose, loose, tight, vtight, extreme'')')
+
+   write(id,'(3x,''    --cycles <int> '','// &
+   &          'x,''maximum number of optimization cycles'')')
 
    write(id,'(3x,''    --hess        '','// &
    &          'x,''compute Hessian at GFNn-xTB level'')')
