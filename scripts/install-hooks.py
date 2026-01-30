@@ -57,9 +57,14 @@ def main():
     try:
         # Check if hook already exists and back it up
         if dest_hook.exists():
+            # Find a unique backup filename
             backup_hook = git_hooks_dir / "commit-msg.backup"
-            print(f"⚠️  Existing commit-msg hook found. Backing up to {backup_hook}")
-            shutil.copy2(dest_hook, backup_hook)
+            if backup_hook.exists():
+                print(f"⚠️  Backup file already exists at {backup_hook}")
+                print("   Skipping backup to preserve original hook.")
+            else:
+                print(f"⚠️  Existing commit-msg hook found. Backing up to {backup_hook}")
+                shutil.copy2(dest_hook, backup_hook)
 
         shutil.copy2(source_hook, dest_hook)
 
