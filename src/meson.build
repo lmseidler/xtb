@@ -49,6 +49,8 @@ srcs += files(
   'broyden.f90',
   'charge_model.f90',
   'coffee.f90',
+  'compliance.f90',
+  'compliance_driver.f90',
   'constrain_param.f90',
   'constrain_pot.f90',
   'constr.f90',
@@ -157,5 +159,6 @@ srcs += files(
   'wrmodef.f90',
   'wrmo.f90',
   'xhelp.f90',
+  'zmat_bmatrix.f90',
   'zmatpr.f90',
 )
