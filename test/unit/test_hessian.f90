@@ -28,6 +28,8 @@ module test_hessian
 
    use xtb_xtb_calculator, only : TxTBCalculator
    use xtb_main_setup, only : newXTBCalculator, newWavefunction
+   use xtb_compliance, only : compute_compliance
+   use xtb_zmat_bmatrix, only : setup_zmat, compute_bmatrix
    implicit none
    private
 
@@ -43,7 +45,8 @@ subroutine collect_hessian(testsuite)
 
    testsuite = [ &
       new_unittest("gfn1", test_gfn1_hessian), &
-      new_unittest("gfn2", test_gfn2_hessian) &
+      new_unittest("gfn2", test_gfn2_hessian), &
+      new_unittest("compliance", test_compliance) &
       ]
 
 end subroutine collect_hessian
@@ -240,5 +243,54 @@ subroutine test_gfn2_hessian(error)
    end do
 
 end subroutine test_gfn2_hessian
+
+subroutine test_compliance(error)
+   type(error_type), allocatable, intent(out) :: error
+   integer, parameter :: nat = 2
+   integer, parameter :: ndim = 3*nat
+   real(wp), parameter :: force_constant = 2.0_wp
+   real(wp), parameter :: thr = 1.0e-10_wp
+   integer, parameter :: at(nat) = [1, 1]
+   real(wp), parameter :: xyz(3, nat) = reshape([ &
+      & 0.0_wp, 0.0_wp, 0.0_wp, &
+      & 2.0_wp, 0.0_wp, 0.0_wp], shape(xyz))
+
+   integer :: i, j, nint, stat
+   integer :: na(nat), nb(nat), nc(nat), ctype(nat), qoff(nat)
+   real(wp) :: e1f(3, nat), e2f(3, nat)
+   real(wp), allocatable :: bmat(:, :), compliance(:, :), hessian(:, :)
+   real(wp) :: redundant_bmat(2, ndim), redundant_compliance(2, 2)
+
+   call setup_zmat(xyz, nat, at, na, nb, nc, ctype, e1f, e2f, qoff, nint)
+   call check(error, nint, 1)
+   if (allocated(error)) return
+
+   allocate(bmat(nint, ndim), compliance(nint, nint), hessian(ndim, ndim))
+   call compute_bmatrix(xyz, nat, na, nb, nc, ctype, e1f, e2f, qoff, nint, bmat)
+
+   do i = 1, ndim
+      do j = 1, ndim
+         hessian(i, j) = force_constant*bmat(1, i)*bmat(1, j)
+      end do
+   end do
+
+   call compute_compliance(hessian, bmat, nat, nint, compliance, stat)
+
+   call check(error, stat, 0)
+   call check(error, bmat(1, 1), -1.0_wp, thr=thr)
+   call check(error, bmat(1, 4), 1.0_wp, thr=thr)
+   call check(error, compliance(1, 1), 1.0_wp/force_constant, thr=thr)
+
+   redundant_bmat(1, :) = bmat(1, :)
+   redundant_bmat(2, :) = bmat(1, :)
+   call compute_compliance(hessian, redundant_bmat, nat, 2, redundant_compliance, stat)
+
+   call check(error, stat, 0)
+   call check(error, redundant_compliance(1, 1), 1.0_wp/force_constant, thr=thr)
+   call check(error, redundant_compliance(1, 2), 1.0_wp/force_constant, thr=thr)
+   call check(error, redundant_compliance(2, 1), 1.0_wp/force_constant, thr=thr)
+   call check(error, redundant_compliance(2, 2), 1.0_wp/force_constant, thr=thr)
+
+end subroutine test_compliance
 
 end module test_hessian
