@@ -27,7 +27,7 @@ module xtb_type_calculator
    use xtb_type_molecule, only : TMolecule
    use xtb_type_restart, only : TRestart
    use xtb_o1numhess, only : adj_list, gen_local_hessian, &
-   & lr_loop, gen_displdir, get_neighbor_list, swart
+   & lr_loop, gen_displdir, get_vdw_neighbor_list, swart, find_projected_imag_modes
    use xtb_param_uffvdwrad, only : get_rad
    use xtb_param_covalentrad, only : get_cov_rad
    implicit none
@@ -45,76 +45,59 @@ module xtb_type_calculator
 
    contains
 
-      !> Perform single point calculation
-      procedure(singlepoint), deferred :: singlepoint
+   !> Perform single point calculation
+   procedure(singlepoint), deferred :: singlepoint
 
-      !> Perform hessian calculation
-      procedure :: hessian
+   !> Perform hessian calculation
+   procedure :: hessian
 
-      !> Perform ODLR approximated numerical hessian
-      procedure :: odlrhessian
+   !> Perform ODLR approximated numerical hessian
+   procedure :: odlrhessian
 
-      !> Write informative printout
-      procedure(writeInfo), deferred :: writeInfo
+   !> Write informative printout
+   procedure(writeInfo), deferred :: writeInfo
 
-   end type TCalculator
+end type TCalculator
 
+abstract interface
+   subroutine singlepoint(self, env, mol, chk, printlevel, restart, &
+         & energy, gradient, sigma, hlgap, results)
+      import :: TCalculator, TEnvironment, TMolecule, TRestart, wp
+      import :: scc_results
+      !> Calculator instance
+      class(TCalculator), intent(inout) :: self
+      !> Computational environment
+      type(TEnvironment), intent(inout) :: env
+      !> Molecular structure data
+      type(TMolecule), intent(inout) :: mol
+      !> Wavefunction data
+      type(TRestart), intent(inout) :: chk
+      !> Print level for IO
+      integer, intent(in) :: printlevel
+      !> Restart from previous results
+      logical, intent(in) :: restart
+      !> Total energy
+      real(wp), intent(out) :: energy
+      !> Molecular gradient
+      real(wp), intent(out) :: gradient(:, :)
+      !> Strain derivatives
+      real(wp), intent(out) :: sigma(:, :)
+      !> HOMO-LUMO gap
+      real(wp), intent(out) :: hlgap
+      !> Detailed results
+      type(scc_results), intent(out) :: results
+   end subroutine singlepoint
 
-   abstract interface
-      subroutine singlepoint(self, env, mol, chk, printlevel, restart, &
-            & energy, gradient, sigma, hlgap, results)
-         import :: TCalculator, TEnvironment, TMolecule, TRestart, wp
-         import :: scc_results
-
-         !> Calculator instance
-         class(TCalculator), intent(inout) :: self
-
-         !> Computational environment
-         type(TEnvironment), intent(inout) :: env
-
-         !> Molecular structure data
-         type(TMolecule), intent(inout) :: mol
-
-         !> Wavefunction data
-         type(TRestart), intent(inout) :: chk
-
-         !> Print level for IO
-         integer, intent(in) :: printlevel
-
-         !> Restart from previous results
-         logical, intent(in) :: restart
-
-         !> Total energy
-         real(wp), intent(out) :: energy
-
-         !> Molecular gradient
-         real(wp), intent(out) :: gradient(:, :)
-
-         !> Strain derivatives
-         real(wp), intent(out) :: sigma(:, :)
-
-         !> HOMO-LUMO gap
-         real(wp), intent(out) :: hlgap
-
-         !> Detailed results
-         type(scc_results), intent(out) :: results
-
-      end subroutine singlepoint
-
-      subroutine writeInfo(self, unit, mol)
-         import :: TCalculator, TMolecule
-
-         !> Calculator instance
-         class(TCalculator), intent(in) :: self
-
-         !> Unit for I/O
-         integer, intent(in) :: unit
-
-         !> Molecular structure data
-         type(TMolecule), intent(in) :: mol
-
-      end subroutine writeInfo
-   end interface
+   subroutine writeInfo(self, unit, mol)
+      import :: TCalculator, TMolecule
+      !> Calculator instance
+      class(TCalculator), intent(in) :: self
+      !> Unit for I/O
+      integer, intent(in) :: unit
+      !> Molecular structure data
+      type(TMolecule), intent(in) :: mol
+   end subroutine writeInfo
+end interface
 
 contains
 
@@ -147,21 +130,20 @@ subroutine hessian(self, env, mol0, chk0, list, step, hess, dipgrad, polgrad)
    real(wp), allocatable :: gr(:, :), gl(:, :)
 
    call timing(t0, w0)
-   step2 = 0.5_wp / step
+   step2 = 0.5_wp/step
 
    !$omp parallel if (self%threadsafe) default(none) &
    !$omp shared(self, env, mol0, chk0, list, step, hess, dipgrad, polgrad, step2, t0, w0) &
-   !$omp private(kat, iat, jat, jc, jj, ii, er, el, egap, gr, gl, sr, sl, dr, dl, alphar, alphal, &
-   !$omp& t1, w1)
+   !$omp private(kat, iat, jat, jc, jj, ii, er, el, egap, gr, gl, sr, sl, dr, dl, alphar, alphal, t1, w1)
 
-   allocate(gr(3, mol0%n), gl(3, mol0%n))
+   allocate (gr(3, mol0%n), gl(3, mol0%n))
 
    !$omp do collapse(2) schedule(runtime)
    do kat = 1, size(list)
       do ic = 1, 3
 
          iat = list(kat)
-         ii = 3 * (iat - 1) + ic
+         ii = 3*(iat - 1) + ic
          er = 0.0_wp
          el = 0.0_wp
          gr = 0.0_wp
@@ -171,31 +153,31 @@ subroutine hessian(self, env, mol0, chk0, list, step, hess, dipgrad, polgrad)
          call hessian_point(self, env, mol0, chk0, iat, ic, -step, el, gl, sl, egap, dl, alphal)
 
          if (present(polgrad)) then
-            polgrad(1, ii) = (alphar(1, 1) - alphal(1, 1)) * step2
-            polgrad(2, ii) = (alphar(1, 2) - alphal(1, 2)) * step2
-            polgrad(3, ii) = (alphar(2, 2) - alphal(2, 2)) * step2
-            polgrad(4, ii) = (alphar(1, 3) - alphal(1, 3)) * step2
-            polgrad(5, ii) = (alphar(2, 3) - alphal(2, 3)) * step2
-            polgrad(6, ii) = (alphar(3, 3) - alphal(3, 3)) * step2
+            polgrad(1, ii) = (alphar(1, 1) - alphal(1, 1))*step2
+            polgrad(2, ii) = (alphar(1, 2) - alphal(1, 2))*step2
+            polgrad(3, ii) = (alphar(2, 2) - alphal(2, 2))*step2
+            polgrad(4, ii) = (alphar(1, 3) - alphal(1, 3))*step2
+            polgrad(5, ii) = (alphar(2, 3) - alphal(2, 3))*step2
+            polgrad(6, ii) = (alphar(3, 3) - alphal(3, 3))*step2
          end if
 
-         dipgrad(:, ii) = (dr - dl) * step2
+         dipgrad(:, ii) = (dr - dl)*step2
 
          do jat = 1, mol0%n
             do jc = 1, 3
-               jj = 3 * (jat - 1) + jc
+               jj = 3*(jat - 1) + jc
                hess(jj, ii) = hess(jj, ii) &
-                  & + (gr(jc, jat) - gl(jc, jat)) * step2
+                  & + (gr(jc, jat) - gl(jc, jat))*step2
             end do
          end do
 
          if (kat == 3 .and. ic == 3) then
             !$omp critical(xtb_numdiff2)
             call timing(t1, w1)
-            write(*, '("estimated CPU  time",F10.2," min")') &
-               & 0.3333333_wp * size(list) * (t1 - t0) / 60.0_wp
-            write(*, '("estimated wall time",F10.2," min")') &
-               & 0.3333333_wp * size(list) * (w1 - w0) / 60.0_wp
+            write (*, '("estimated CPU  time",F10.2," min")') &
+               & 0.3333333_wp*size(list)*(t1 - t0)/60.0_wp
+            write (*, '("estimated wall time",F10.2," min")') &
+               & 0.3333333_wp*size(list)*(w1 - w0)/60.0_wp
             !$omp end critical(xtb_numdiff2)
          end if
 
@@ -234,7 +216,7 @@ subroutine hessian_point(self, env, mol0, chk0, iat, ic, step, energy, gradient,
 end subroutine hessian_point
 
 !> Implementation according to Wang et al. (https://doi.org/10.1021/acs.jctc.5c01354)
-subroutine odlrhessian(self, env, mol0, chk0, step, hess, final_err)
+subroutine odlrhessian(self, env, mol0, chk0, step, hess, final_err, dipgrad, polgrad)
    character(len=*), parameter :: source = "hessian_odlr"
    !> Single point calculator
    class(TCalculator), intent(inout) :: self
@@ -252,30 +234,53 @@ subroutine odlrhessian(self, env, mol0, chk0, step, hess, final_err)
    real(wp), allocatable :: displdir(:, :)
    !> Final error after all steps
    real(wp), intent(out) :: final_err
-   
+   !> Array to add dipole gradient to
+   real(wp), intent(inout), optional :: dipgrad(:, :)
+   !> Array to add polarizability gradient to
+   real(wp), intent(inout), optional :: polgrad(:, :)
+
    real(wp), parameter :: dmax = 1.0_wp, eps = 1.0e-8_wp, eps2 = 1.0e-15_wp, imagthr = 1.0e-8_wp
    real(wp), parameter :: identity3(3, 3) = reshape([1, 0, 0, 0, 1, 0, 0, 0, 1], shape(identity3))
+   ! iterative imaginary-frequency repair parameters
+   real(wp), parameter :: neg_sig_min_rcm = 5.0_wp, neg_add_cutoff_rcm = 200.0_wp
+   integer, parameter :: max_neg_round = 6, max_neg_add_per_round = 6
+   logical, parameter :: iterative_neg_mode = .true.
 
    type(TMolecule) :: mol
    type(TRestart) :: chk
    type(scc_results) :: res
    type(adj_list), allocatable :: neighborlist(:)
    real(wp), allocatable :: distmat(:, :), h0(:, :), tmp_grad(:, :), &
-      & g0(:), g(:, :), work(:), eigvec(:, :), eigval(:)
+      & g0(:), g(:, :), work(:), eigvec(:, :), eigval(:), &
+      & dipdir(:, :), poldir(:, :), prop_tmp(:, :)
    real(wp) :: energy, sigma(3, 3), egap, dist, barycenter(3), inertia(3), &
-      & ax(3, 3), cross(3), Imat0, displmax, vec(3), ri, rj
-   logical :: terminate_run
+      & ax(3, 3), cross(3), Imat0, vec(3), ri, rj, delta_r1, dip0(3), alpha0(3, 3), &
+      & rot_norm, omega(3, 3), dalpha(3, 3)
+   logical :: terminate_run, linear, do_dipgrad, do_polgrad
    integer, allocatable :: nbcounts(:)
-   integer :: N, i, j, k, Ntr, info, lwork, ndispl_final, max_nb, ndispl0, nimg
-   
+   integer :: N, i, j, k, Ntr, info, lwork, ndispl_final, max_nb, ndispl0, nimg, rmode
+   ! iterative repair locals
+   integer :: neg_round, nadd, nmodes_det, prev_nimg, total_repair, ndiag_window
+   real(wp), allocatable :: cand_modes(:, :), cand_freqs(:), sel_modes(:, :), sel_freqs(:), vscratch(:)
+   real(wp) :: min_freq_round, vdot
+   character(len=24) :: neg_stop_reason
+
+   ! ===== PROFILING TIMERS =====
+   integer :: clk_t0, clk_t1, clk_rate
+   real(wp) :: t_setup, t_dirgen, t_refsp, t_gradeval, t_local, t_lrcorr, t_negmode, t_total
+   call system_clock(clk_t0, clk_rate)
+   t_setup = 0.0_wp; t_dirgen = 0.0_wp; t_refsp = 0.0_wp; t_gradeval = 0.0_wp
+   t_local = 0.0_wp; t_lrcorr = 0.0_wp; t_negmode = 0.0_wp
+   ! ============================
+
    ! ========== INITIALIZATION ==========
-   N = 3 * mol0%n
+   N = 3*mol0%n
 
    call mol%copy(mol0)
    call chk%copy(chk0)
 
    ! hessian initial guess
-   allocate(h0(N, N))
+   allocate (h0(N, N))
    call swart(env, mol%xyz, mol%at, h0)
    call env%check(terminate_run)
    if (terminate_run) then
@@ -283,12 +288,24 @@ subroutine odlrhessian(self, env, mol0, chk0, step, hess, final_err)
    end if
 
    ! calculate unperturbed gradient
-   allocate(tmp_grad(3, mol0%n))
+   allocate (tmp_grad(3, mol0%n))
+   ! ===== PROFILING: end setup, start ref singlepoint =====
+   call system_clock(clk_t1)
+   t_setup = real(clk_t1 - clk_t0, wp)/real(clk_rate, wp)
+   call system_clock(clk_t0)
    call self%singlepoint(env, mol, chk, -1, .true., energy, tmp_grad, sigma, egap, res)
-   g0 = reshape(tmp_grad,[N])
+   g0 = reshape(tmp_grad, [N])
+   dip0 = res%dipole
+   alpha0 = res%alpha
+   do_polgrad = present(polgrad)
+   do_dipgrad = present(dipgrad) .or. do_polgrad
+   ! ===== PROFILING: end ref singlepoint, start gradeval (rot/vib) =====
+   call system_clock(clk_t1)
+   t_refsp = real(clk_t1 - clk_t0, wp)/real(clk_rate, wp)
+   call system_clock(clk_t0)
 
    ! setup effective distmat
-   allocate(distmat(N, N))
+   allocate (distmat(N, N))
    do i = 1, mol0%n
       do j = i, mol0%n
          ! effective distmat
@@ -299,45 +316,46 @@ subroutine odlrhessian(self, env, mol0, chk0, step, hess, final_err)
             return
          end if
          dist = mol0%dist(i, j) - get_rad(mol0%at(i)) - get_rad(mol0%at(j))
-         distmat(3 * i - 2:3 * i, 3 * j - 2:3 * j) = dist
-         distmat(3 * j - 2:3 * j, 3 * i - 2:3 * i) = dist
+         distmat(3*i - 2:3*i, 3*j - 2:3*j) = dist
+         distmat(3*j - 2:3*j, 3*i - 2:3*i) = dist
       end do
    end do
 
-   allocate(displdir(N, N))
+   allocate (displdir(N, N))
    displdir = 0.0_wp
    ! set up initial displdir with trans, rot, and totally symmetric vib mode first
    ! translational displacements
    Ntr = 3
    do i = 1, mol0%n
-      displdir(3 * i - 2, 1) = 1.0_wp / sqrt(real(mol0%n, wp))
-      displdir(3 * i - 1, 2) = 1.0_wp / sqrt(real(mol0%n, wp))
-      displdir(3 * i, 3) = 1.0_wp / sqrt(real(mol0%n, wp))
+      displdir(3*i - 2, 1) = 1.0_wp/sqrt(real(mol0%n, wp))
+      displdir(3*i - 1, 2) = 1.0_wp/sqrt(real(mol0%n, wp))
+      displdir(3*i, 3) = 1.0_wp/sqrt(real(mol0%n, wp))
    end do
 
    ! calculate inertial moment and axes
-   barycenter = sum(mol0%xyz, dim=2) / real(mol0%n, wp)
+   barycenter = sum(mol0%xyz, dim=2)/real(mol0%n, wp)
    Imat0 = 0.0_wp
    do i = 1, mol0%n
       vec = mol0%xyz(:, i) - barycenter(:)
-         Imat0 = Imat0 + mctc_dot(vec, vec)
+      Imat0 = Imat0 + mctc_dot(vec, vec)
    end do
-   ax = Imat0 * identity3
+   ax = Imat0*identity3
    do i = 1, 3
       do j = 1, 3
          do k = 1, mol0%n
-            ax(i, j) = ax(i, j) - (mol0%xyz(i, k) - barycenter(i)) * (mol0%xyz(j, k) - barycenter(j))
+            ax(i, j) = ax(i, j) - (mol0%xyz(i, k) - barycenter(i))*(mol0%xyz(j, k) - barycenter(j))
          end do
       end do
    end do
 
    lwork = -1
-   allocate(work(1))
+   allocate (work(1))
    call dsyev('V', 'U', 3, ax, 3, inertia, work, lwork, info)
    lwork = int(work(1))
-   deallocate(work)
-   allocate(work(lwork))
+   deallocate (work)
+   allocate (work(lwork))
    call dsyev('V', 'U', 3, ax, 3, inertia, work, lwork, info)
+   linear = any(inertia < 1.0e-4_wp)
 
    ! rotational displacements
    do i = 1, 3
@@ -345,43 +363,107 @@ subroutine odlrhessian(self, env, mol0, chk0, step, hess, final_err)
       Ntr = Ntr + 1
       do j = 1, mol0%n
          cross = crossProd(ax(:, i), mol0%xyz(:, j) - barycenter(:))
-         displdir(3 * j - 2:3 * j, Ntr) = cross
+         displdir(3*j - 2:3*j, Ntr) = cross
       end do
-      displdir(:, Ntr) = displdir(:, Ntr) / norm2(displdir(:, Ntr))
+      displdir(:, Ntr) = displdir(:, Ntr)/norm2(displdir(:, Ntr))
    end do
 
    ! totally symmetric vibrational displacement
    do i = 1, mol0%n
-      displdir(3 * i - 2:3 * i, Ntr + 1) = mol0%xyz(:, i) - barycenter(:)
+      displdir(3*i - 2:3*i, Ntr + 1) = mol0%xyz(:, i) - barycenter(:)
    end do
-   displdir(:, Ntr + 1) = displdir(:, Ntr + 1) / norm2(displdir(:, Ntr + 1))
+   displdir(:, Ntr + 1) = displdir(:, Ntr + 1)/norm2(displdir(:, Ntr + 1))
 
    ! get gradient derivs along rot/vib displacements
    ! gradients along translations are zero
-   allocate(g(N, N))
+   allocate (g(N, N))
    g = 0.0_wp
-   call get_gradient_derivs(self, env, step, 3, Ntr, displdir, mol0, chk0, g0, .false., g)
-   
-   ! for vib mode we need double-sided derivative
-   call get_gradient_derivs(self, env, step, Ntr, Ntr+1, displdir, mol0, chk0, g0, .true., g)
+   if (do_dipgrad) then
+      allocate (dipdir(3, N), source=0.0_wp)
+      do i = 1, 3
+         dipdir(i, i) = mol0%chrg/sqrt(real(mol0%n, wp))
+      end do
+   end if
+   if (do_polgrad) allocate (poldir(6, N), source=0.0_wp)
 
-   ! generate remaining displdirs based on distmat and dmax
-   ! compute neighbor list
-   call get_neighbor_list(distmat, dmax, neighborlist)
-   allocate(nbcounts(N))
+   rmode = 3
+   do i = 1, 3
+      if (inertia(i) < 1e-4_wp) cycle
+      rmode = rmode + 1
+      rot_norm = 0.0_wp
+      do j = 1, mol0%n
+         cross = crossProd(ax(:, i), mol0%xyz(:, j) - barycenter(:))
+         rot_norm = rot_norm + dot_product(cross, cross)
+      end do
+      rot_norm = sqrt(rot_norm)
+      if (rot_norm <= eps2) cycle
+
+      do j = 1, mol0%n
+         g(3*j - 2, rmode) = (ax(2, i)*tmp_grad(3, j) - ax(3, i)*tmp_grad(2, j))/rot_norm
+         g(3*j - 1, rmode) = (ax(3, i)*tmp_grad(1, j) - ax(1, i)*tmp_grad(3, j))/rot_norm
+         g(3*j, rmode) = (ax(1, i)*tmp_grad(2, j) - ax(2, i)*tmp_grad(1, j))/rot_norm
+      end do
+
+      if (do_dipgrad) then
+         dipdir(1, rmode) = (ax(2, i)*dip0(3) - ax(3, i)*dip0(2))/rot_norm
+         dipdir(2, rmode) = (ax(3, i)*dip0(1) - ax(1, i)*dip0(3))/rot_norm
+         dipdir(3, rmode) = (ax(1, i)*dip0(2) - ax(2, i)*dip0(1))/rot_norm
+
+         if (do_polgrad) then
+            omega = 0.0_wp
+            omega(1, 2) = -ax(3, i)
+            omega(1, 3) = ax(2, i)
+            omega(2, 1) = ax(3, i)
+            omega(2, 3) = -ax(1, i)
+            omega(3, 1) = -ax(2, i)
+            omega(3, 2) = ax(1, i)
+            dalpha = matmul(omega, alpha0) - matmul(alpha0, omega)
+            poldir(1, rmode) = dalpha(1, 1)/rot_norm
+            poldir(2, rmode) = dalpha(1, 2)/rot_norm
+            poldir(3, rmode) = dalpha(2, 2)/rot_norm
+            poldir(4, rmode) = dalpha(1, 3)/rot_norm
+            poldir(5, rmode) = dalpha(2, 3)/rot_norm
+            poldir(6, rmode) = dalpha(3, 3)/rot_norm
+         end if
+      end if
+   end do
+
+   call get_gradient_derivs(self, env, step, Ntr, Ntr + 1, displdir, mol0, chk0, g0, .true., g, &
+      & dip0, alpha0, dipdir, poldir)
+
+   ! ===== PROFILING: end gradeval (rot/vib), start dirgen =====
+   call system_clock(clk_t1)
+   t_gradeval = real(clk_t1 - clk_t0, wp)/real(clk_rate, wp)
+   call system_clock(clk_t0)
+
+   ! generate remaining displdirs based on the vdW near-range N^(1)
+   delta_r1 = 1.0_wp
+   if (mol0%n >= 100) delta_r1 = 2.0_wp
+   call get_vdw_neighbor_list(mol0%xyz, mol0%at, delta_r1, neighborlist)
+   allocate (nbcounts(N))
    max_nb = 0
    do i = 1, N
       nbcounts(i) = size(neighborlist(i)%neighbors)
       if (nbcounts(i) > max_nb) max_nb = nbcounts(i)
    end do
-   
+
    ! populate displdir
    ndispl0 = Ntr + 1
-   call gen_displdir(N, ndispl0, h0, max_nb, neighborlist, nbcounts, eps, eps2, displdir, ndispl_final)
+   call gen_displdir(N, ndispl0, h0, max_nb, neighborlist, nbcounts, eps, eps2, displdir, ndispl_final, env%unit)
 
    ! ========== GRADIENT DERIVATIVES ==========
    ! write(env%unit, '(A)') "Calculating gradient derivatives"
-   call get_gradient_derivs(self, env, step, ndispl0, ndispl_final, displdir, mol0, chk0, g0, .false., g)
+   ! ===== PROFILING: end dirgen, start gradeval (main) =====
+   call system_clock(clk_t1)
+   t_dirgen = real(clk_t1 - clk_t0, wp)/real(clk_rate, wp)
+   call system_clock(clk_t0)
+   call get_gradient_derivs(self, env, step, ndispl0, ndispl_final, displdir, mol0, chk0, g0, .false., g, &
+      & dip0, alpha0, dipdir, poldir)
+
+   ! ===== PROFILING: end gradeval (main), start local solve =====
+   call system_clock(clk_t1)
+   t_gradeval = t_gradeval + real(clk_t1 - clk_t0, wp)/real(clk_rate, wp)
+   call system_clock(clk_t0)
 
    ! ========== FINAL HESSIAN ==========
    ! construct hessian from local hessian and odlr correction
@@ -391,43 +473,165 @@ subroutine odlrhessian(self, env, mol0, chk0, step, hess, final_err)
    ! compute low rank correction
    call lr_loop(env, ndispl_final, g, hess, displdir, final_err)
 
+   ! ===== PROFILING: end local solve, start neg-mode (diag+rerun) =====
+   call system_clock(clk_t1)
+   t_local = real(clk_t1 - clk_t0, wp)/real(clk_rate, wp)
+   call system_clock(clk_t0)
+
    call env%check(terminate_run)
    if (terminate_run) then
       return
    end if
 
-   ! diagonalize
-   ! keep hess in case there are no imaginary frequencies
-   allocate(eigvec(N, N))
-   eigvec = hess
-   allocate(eigval(N))
-   lwork = -1
-   deallocate(work)
-   allocate(work(1))
-   call dsyev('V', 'U', N, eigvec, N, eigval, work, lwork, info)
-   lwork = int(work(1))
-   deallocate(work)
-   allocate(work(lwork))
-   call dsyev('V', 'U', N, eigvec, N, eigval, work, lwork, info)
+   total_repair = 0
+   neg_stop_reason = "none"
 
-   ! check for imaginary frequencies
-   nimg = count(eigval < -imagthr)
-   ! only get the most negative freqs if they're too many
-   if (ndispl_final + nimg > N) nimg = N - ndispl_final
+   if (iterative_neg_mode .and. .not. linear) then
+      ! iterative projected imaginary-frequency repair (plan: iterative-imaginary-frequency)
+      ndiag_window = min(N, max_neg_add_per_round + 6)
+      allocate (cand_modes(N, ndiag_window), cand_freqs(ndiag_window))
+      allocate (sel_modes(N, max_neg_add_per_round), sel_freqs(max_neg_add_per_round))
+      allocate (vscratch(N))
+      prev_nimg = huge(1)
 
-   if (nimg > 0) then
-      ! rerun with imaginary displacements
-      displdir(:, ndispl_final + 1:ndispl_final + nimg) = eigvec(:, 1:nimg)
-      ndispl0 = ndispl_final
-      ndispl_final = ndispl_final + nimg
-      call get_gradient_derivs(self, env, step, ndispl0, ndispl_final, displdir, mol0, chk0, g0, .false., g)
-      call gen_local_hessian(env, ndispl_final, distmat, displdir, g, dmax, hess)
-      call lr_loop(env, ndispl_final, g, hess, displdir, final_err)
+      do neg_round = 1, max_neg_round
+         call find_projected_imag_modes(env, mol0, hess, linear, ndiag_window, &
+            & cand_modes, cand_freqs, nmodes_det)
+         call env%check(terminate_run)
+         if (terminate_run) exit
+
+         if (nmodes_det == 0) then
+            neg_stop_reason = "converged"
+            exit
+         end if
+         if (nmodes_det >= prev_nimg .and. neg_round > 1) then
+            neg_stop_reason = "stagnation"
+            exit
+         end if
+         prev_nimg = nmodes_det
+
+         ! select & orthogonalize candidates against existing displdir and each other
+         nadd = 0
+         min_freq_round = huge(1.0_wp)
+         do j = 1, nmodes_det
+            if (nadd >= max_neg_add_per_round) exit
+            if (ndispl_final + nadd >= N) exit
+            if (cand_freqs(j) < -neg_add_cutoff_rcm) cycle
+            vscratch = cand_modes(:, j)
+            do k = 1, ndispl_final
+               vdot = mctc_dot(displdir(:, k), vscratch)
+               vscratch = vscratch - vdot*displdir(:, k)
+            end do
+            do k = 1, nadd
+               vdot = mctc_dot(sel_modes(:, k), vscratch)
+               vscratch = vscratch - vdot*sel_modes(:, k)
+            end do
+            dist = norm2(vscratch)
+            if (dist < eps2) cycle
+            nadd = nadd + 1
+            sel_modes(:, nadd) = vscratch/dist
+            sel_freqs(nadd) = cand_freqs(j)
+            min_freq_round = min(min_freq_round, cand_freqs(j))
+         end do
+
+         if (nadd == 0) then
+            neg_stop_reason = "no_new_modes"
+            exit
+         end if
+
+         displdir(:, ndispl_final + 1:ndispl_final + nadd) = sel_modes(:, 1:nadd)
+         ndispl0 = ndispl_final
+         ndispl_final = ndispl_final + nadd
+         total_repair = total_repair + nadd
+
+         call get_gradient_derivs(self, env, step, ndispl0, ndispl_final, &
+            & displdir, mol0, chk0, g0, .true., g, dip0, alpha0, dipdir, poldir)
+         call env%check(terminate_run)
+         if (terminate_run) exit
+         call gen_local_hessian(env, ndispl_final, distmat, displdir, g, dmax, hess)
+         call lr_loop(env, ndispl_final, g, hess, displdir, final_err)
+
+         if (env%unit > 0) then
+            write (env%unit, '("PROF neg_mode: round=",i0,", nimg=",i0,", nadd=",i0,", min_freq=",f0.1," cm-1")') &
+               & neg_round, nmodes_det, nadd, min_freq_round
+            flush (env%unit)
+         end if
+      end do
+
+      if (neg_stop_reason == "none") neg_stop_reason = "max_rounds"
+      if (env%unit > 0) then
+         write (env%unit, '("PROF neg_mode: stop=",a,", total_repair=",i0,", doublesided=T")') &
+            & trim(neg_stop_reason), total_repair
+         flush (env%unit)
+      end if
+
+   else
+      ! old one-shot raw-eigenvalue repair (fallback: linear molecules or disabled)
+      allocate (eigvec(N, N))
+      eigvec = hess
+      allocate (eigval(N))
+      lwork = -1
+      deallocate (work)
+      allocate (work(1))
+      call dsyev('V', 'U', N, eigvec, N, eigval, work, lwork, info)
+      lwork = int(work(1))
+      deallocate (work)
+      allocate (work(lwork))
+      call dsyev('V', 'U', N, eigvec, N, eigval, work, lwork, info)
+
+      nimg = count(eigval < -imagthr)
+      if (ndispl_final + nimg > N) nimg = N - ndispl_final
+
+      if (nimg > 0) then
+         displdir(:, ndispl_final + 1:ndispl_final + nimg) = eigvec(:, 1:nimg)
+         ndispl0 = ndispl_final
+         ndispl_final = ndispl_final + nimg
+         call get_gradient_derivs(self, env, step, ndispl0, ndispl_final, &
+            & displdir, mol0, chk0, g0, .false., g, dip0, alpha0, dipdir, poldir)
+         call gen_local_hessian(env, ndispl_final, distmat, displdir, g, dmax, hess)
+         call lr_loop(env, ndispl_final, g, hess, displdir, final_err)
+      end if
    end if
+
+   if (present(dipgrad)) then
+      allocate (prop_tmp(3, N), source=0.0_wp)
+      call mctc_gemm(dipdir(:, :ndispl_final), displdir(:, :ndispl_final), &
+         & prop_tmp, transb="t", alpha=1.0_wp, beta=0.0_wp)
+      dipgrad = dipgrad + prop_tmp
+      deallocate (prop_tmp)
+   end if
+
+   if (do_polgrad) then
+      allocate (prop_tmp(6, N), source=0.0_wp)
+      call mctc_gemm(poldir(:, :ndispl_final), displdir(:, :ndispl_final), &
+         & prop_tmp, transb="t", alpha=1.0_wp, beta=0.0_wp)
+      polgrad = polgrad + prop_tmp
+      deallocate (prop_tmp)
+   end if
+
+   ! ===== PROFILING: end neg-mode, final report =====
+   call system_clock(clk_t1)
+   t_negmode = real(clk_t1 - clk_t0, wp)/real(clk_rate, wp)
+   t_total = t_setup + t_refsp + t_gradeval + t_dirgen + t_local + t_negmode
+   if (env%unit > 0) then
+      write (env%unit, '("========================================================")')
+      write (env%unit, '("PROF odlrhessian: natoms=",i0,", ndispl=",i0)') mol0%n, ndispl_final
+      write (env%unit, '("PROF odlrhessian: setup        = ",f10.3," s")') t_setup
+      write (env%unit, '("PROF odlrhessian: ref_singlept = ",f10.3," s")') t_refsp
+      write (env%unit, '("PROF odlrhessian: grad_evals   = ",f10.3," s")') t_gradeval
+      write (env%unit, '("PROF odlrhessian: dirgen       = ",f10.3," s")') t_dirgen
+      write (env%unit, '("PROF odlrhessian: local_solve  = ",f10.3," s")') t_local
+      write (env%unit, '("PROF odlrhessian: neg_mode     = ",f10.3," s")') t_negmode
+      write (env%unit, '("PROF odlrhessian: TOTAL        = ",f10.3," s")') t_total
+      write (env%unit, '("========================================================")')
+      flush (env%unit)
+   end if
+   ! ================================
 
 end subroutine odlrhessian
 
-subroutine get_gradient_derivs(self, env, step, ndispl0, ndispl_final, displdir, mol0, chk0, g0, doublesided, g)
+subroutine get_gradient_derivs(self, env, step, ndispl0, ndispl_final, displdir, mol0, chk0, g0, doublesided, &
+   & g, dip0, alpha0, dipdir, poldir)
    class(TCalculator), intent(inout) :: self
    type(TEnvironment), intent(inout) :: env
    real(wp), intent(in) :: step
@@ -438,38 +642,30 @@ subroutine get_gradient_derivs(self, env, step, ndispl0, ndispl_final, displdir,
    real(wp), intent(in) :: g0(:)
    logical, intent(in) :: doublesided
    real(wp), intent(inout) :: g(:, :)
+   real(wp), intent(in) :: dip0(3)
+   real(wp), intent(in) :: alpha0(3, 3)
+   real(wp), intent(inout), optional :: dipdir(:, :)
+   real(wp), intent(inout), optional :: poldir(:, :)
 
    integer :: i, N
    real(wp) :: displmax
 
-   N = 3 * mol0%n
-   if (doublesided) then
-      !$omp parallel if (self%threadsafe) default(none) &
-      !$omp shared(self, env, mol0, chk0, step, g, N, ndispl0, ndispl_final, displdir) &
-      !$omp private(i, displmax)
-      !$omp do schedule(runtime)
-      do i = ndispl0 + 1, ndispl_final
-         displmax = maxval(abs(displdir(:, i)))
-         call gradient_derivs_doublesided_point(self, env, mol0, chk0, step, displdir(:, i), &
-            & displmax, N, g(:, i))
-      end do
-      !$omp end parallel
-   else
-      !$omp parallel if (self%threadsafe) default(none) &
-      !$omp shared(self, env, mol0, chk0, step, g, N, ndispl0, ndispl_final, displdir, g0) &
-      !$omp private(i, displmax)
-      !$omp do schedule(runtime)
-      do i = ndispl0 + 1, ndispl_final
-         displmax = maxval(abs(displdir(:, i)))
-         call gradient_derivs_singlesided_point(self, env, mol0, chk0, step, displdir(:, i), &
-            & displmax, N, g0, g(:, i))
-      end do
-      !$omp end parallel
-   end if
+   N = 3*mol0%n
+
+   !$omp parallel if (self%threadsafe) default(none) &
+   !$omp shared(self, env, mol0, chk0, step, g, dipdir, poldir, dip0, alpha0, g0, N, ndispl0, ndispl_final, displdir, doublesided) &
+   !$omp private(i, displmax)
+   !$omp do schedule(runtime)
+   do i = ndispl0 + 1, ndispl_final
+      displmax = maxval(abs(displdir(:, i)))
+      call gradient_derivs_point(self, env, mol0, chk0, step, displdir(:, i), &
+         & displmax, N, doublesided, g0, g(:, i), dip0, alpha0, dipdir, poldir, i)
+   end do
+   !$omp end parallel
 end subroutine get_gradient_derivs
 
-subroutine gradient_derivs_doublesided_point(self, env, mol0, chk0, step, displdir_i, &
-      & displmax, N, g_i)
+subroutine gradient_derivs_point(self, env, mol0, chk0, step, displdir_i, &
+   & displmax, N, doublesided, g0, g_i, dip0, alpha0, dipdir, poldir, icol)
    class(TCalculator), intent(inout) :: self
    type(TEnvironment), intent(inout) :: env
    type(TMolecule), intent(in) :: mol0
@@ -478,61 +674,65 @@ subroutine gradient_derivs_doublesided_point(self, env, mol0, chk0, step, displd
    real(wp), intent(in) :: displdir_i(:)
    real(wp), intent(in) :: displmax
    integer, intent(in) :: N
-   real(wp), intent(out) :: g_i(:)
-
-   type(TMolecule) :: mol
-   type(TRestart) :: chk
-   type(scc_results) :: res
-   real(wp) :: sigma(3, 3), energy, egap
-   real(wp), allocatable :: tmp_gradl(:, :), tmp_gradr(:, :)
-
-   allocate(tmp_gradr(3, mol0%n), tmp_gradl(3, mol0%n))
-   tmp_gradl = 0.0_wp
-   tmp_gradr = 0.0_wp
-
-   call mol%copy(mol0)
-   call chk%copy(chk0)
-   mol%xyz = mol0%xyz + reshape(step * displdir_i / displmax, [3, mol0%n])
-   call self%singlepoint(env, mol, chk, -1, .true., energy, tmp_gradl, sigma, egap, res)
-
-   call mol%copy(mol0)
-   call chk%copy(chk0)
-   mol%xyz = mol0%xyz - reshape(step * displdir_i / displmax, [3, mol0%n])
-   call self%singlepoint(env, mol, chk, -1, .true., energy, tmp_gradr, sigma, egap, res)
-
-   g_i = reshape(tmp_gradl - tmp_gradr, [N])
-   g_i = g_i / step * displmax * 0.5_wp
-end subroutine gradient_derivs_doublesided_point
-
-subroutine gradient_derivs_singlesided_point(self, env, mol0, chk0, step, displdir_i, &
-      & displmax, N, g0, g_i)
-   class(TCalculator), intent(inout) :: self
-   type(TEnvironment), intent(inout) :: env
-   type(TMolecule), intent(in) :: mol0
-   type(TRestart), intent(in) :: chk0
-   real(wp), intent(in) :: step
-   real(wp), intent(in) :: displdir_i(:)
-   real(wp), intent(in) :: displmax
-   integer, intent(in) :: N
+   logical, intent(in) :: doublesided
    real(wp), intent(in) :: g0(:)
    real(wp), intent(out) :: g_i(:)
+   real(wp), intent(in) :: dip0(3)
+   real(wp), intent(in) :: alpha0(3, 3)
+   real(wp), intent(inout), optional :: dipdir(:, :)
+   real(wp), intent(inout), optional :: poldir(:, :)
+   integer, intent(in) :: icol
 
    type(TMolecule) :: mol
    type(TRestart) :: chk
    type(scc_results) :: res
-   real(wp) :: sigma(3, 3), energy, egap
-   real(wp), allocatable :: tmp_gradl(:, :)
+   real(wp) :: sigma(3, 3), energy, egap, factor
+   real(wp) :: dipl(3), dipr(3), alphal(3, 3), alphar(3, 3), alphadiff(3, 3)
+   real(wp), allocatable :: tmp_gradl(:, :), tmp_gradr(:, :)
 
-   allocate(tmp_gradl(3, mol0%n))
+   factor = merge(0.5_wp, 1.0_wp, doublesided)
+
+   allocate (tmp_gradl(3, mol0%n))
    tmp_gradl = 0.0_wp
+   if (doublesided) then
+      allocate (tmp_gradr(3, mol0%n))
+      tmp_gradr = 0.0_wp
+   end if
 
    call mol%copy(mol0)
    call chk%copy(chk0)
-   mol%xyz = mol0%xyz + reshape(step * displdir_i / displmax, [3, mol0%n])
+   mol%xyz = mol0%xyz + reshape(step*displdir_i/displmax, [3, mol0%n])
    call self%singlepoint(env, mol, chk, -1, .true., energy, tmp_gradl, sigma, egap, res)
+   dipl = res%dipole
+   alphal = res%alpha
 
-   g_i = reshape(tmp_gradl, [N])
-   g_i = (g_i - g0) / step * displmax
-end subroutine gradient_derivs_singlesided_point
+   if (doublesided) then
+      call mol%copy(mol0)
+      call chk%copy(chk0)
+      mol%xyz = mol0%xyz - reshape(step*displdir_i/displmax, [3, mol0%n])
+      call self%singlepoint(env, mol, chk, -1, .true., energy, tmp_gradr, sigma, egap, res)
+      dipr = res%dipole
+      alphar = res%alpha
+      g_i = reshape(tmp_gradl - tmp_gradr, [N])
+      alphadiff = alphal - alphar
+   else
+      g_i = reshape(tmp_gradl, [N]) - g0
+      alphadiff = alphal - alpha0
+   end if
+   g_i = g_i/step*displmax*factor
+
+   if (present(dipdir)) then
+      if (doublesided) then
+         dipdir(:, icol) = (dipl - dipr)/step*displmax*factor
+      else
+         dipdir(:, icol) = (dipl - dip0)/step*displmax*factor
+      end if
+   end if
+
+   if (present(poldir)) then
+      poldir(:, icol) = [alphadiff(1, 1), alphadiff(1, 2), alphadiff(2, 2), &
+         & alphadiff(1, 3), alphadiff(2, 3), alphadiff(3, 3)]/step*displmax*factor
+   end if
+end subroutine gradient_derivs_point
 
 end module xtb_type_calculator
