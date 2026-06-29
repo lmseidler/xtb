@@ -193,10 +193,12 @@ subroutine numhess( &
       h = 0.0_wp
       dipd = 0.0_wp
       pold = 0.0_wp
+      indx = [(i, i = 1, mol%n)]
       if (set%elprop == p_elprop_alpha) then
-         call calc%odlrhessian(env, mol, chk0, step, h, final_err, dipd, dalphadr)
+         call calc%hessian(env, mol, chk0, indx, step, h, dipd, dalphadr, &
+            & odlr=.true., final_err=final_err)
       else
-         call calc%odlrhessian(env, mol, chk0, step, h, final_err, dipd)
+         call calc%hessian(env, mol, chk0, indx, step, h, dipd, odlr=.true., final_err=final_err)
       end if
       call env%check(exitRun)
       if (exitRun) return

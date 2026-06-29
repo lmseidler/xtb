@@ -51,11 +51,9 @@ module xtb_type_calculator
    !> Perform hessian calculation
    procedure :: hessian
 
-   !> Perform ODLR approximated numerical hessian
-   procedure :: odlrhessian
-
    !> Write informative printout
    procedure(writeInfo), deferred :: writeInfo
+
 
 end type TCalculator
 
@@ -99,10 +97,65 @@ abstract interface
    end subroutine writeInfo
 end interface
 
+   real(wp), parameter :: eps = epsilon(0.0_wp)
+   real(wp), parameter :: eps2 = sqrt(eps)
+
 contains
 
 !> Evaluate hessian by finite difference for all atoms
-subroutine hessian(self, env, mol0, chk0, list, step, hess, dipgrad, polgrad)
+subroutine hessian(self, env, mol0, chk0, list, step, hess, dipgrad, polgrad, odlr, final_err)
+   character(len=*), parameter :: source = "hessian"
+   !> Single point calculator
+   class(TCalculator), intent(inout) :: self
+   !> Computation environment
+   type(TEnvironment), intent(inout) :: env
+   !> Molecular structure data
+   type(TMolecule), intent(in) :: mol0
+   !> Restart data
+   type(TRestart), intent(in) :: chk0
+   !> List of atoms to displace
+   integer, intent(in) :: list(:)
+   !> Step size for numerical differentiation
+   real(wp), intent(in) :: step
+   !> Array to add Hessian to
+   real(wp), intent(inout) :: hess(:, :)
+   !> Array to add dipole gradient to
+   real(wp), intent(inout) :: dipgrad(:, :)
+   !> Array to add polarizability gradient to
+   real(wp), intent(inout), optional :: polgrad(:, :)
+   !> Use ODLR approximated numerical hessian
+   logical, intent(in), optional :: odlr
+   !> Final residual error (ODLR only)
+   real(wp), intent(out), optional :: final_err
+
+   logical :: use_odlr
+
+   use_odlr = .false.
+   if (present(odlr)) use_odlr = odlr
+
+   if (use_odlr) then
+      if (present(final_err)) then
+         if (present(polgrad)) then
+            call hessian_odlr(self, env, mol0, chk0, step, hess, final_err, dipgrad, polgrad)
+         else
+            call hessian_odlr(self, env, mol0, chk0, step, hess, final_err, dipgrad)
+         end if
+      else
+         call env%error("hessian: final_err must be present when odlr=.true.", source)
+         return
+      end if
+   else
+      if (present(polgrad)) then
+         call hessian_numdiff(self, env, mol0, chk0, list, step, hess, dipgrad, polgrad)
+      else
+         call hessian_numdiff(self, env, mol0, chk0, list, step, hess, dipgrad)
+      end if
+   end if
+
+end subroutine hessian
+
+!> Evaluate hessian by finite difference using Cartesian displacement vectors
+subroutine hessian_numdiff(self, env, mol0, chk0, list, step, hess, dipgrad, polgrad)
    character(len=*), parameter :: source = "hessian_numdiff_numdiff2"
    !> Single point calculator
    class(TCalculator), intent(inout) :: self
@@ -123,100 +176,88 @@ subroutine hessian(self, env, mol0, chk0, list, step, hess, dipgrad, polgrad)
    !> Array to add polarizability gradient to
    real(wp), intent(inout), optional :: polgrad(:, :)
 
-   integer :: iat, jat, kat, ic, jc, ii, jj
-   real(wp) :: er, el, dr(3), dl(3), sr(3, 3), sl(3, 3), egap, step2
-   real(wp) :: alphal(3, 3), alphar(3, 3)
+   integer :: N, ndispl, i, kat, iat, ic, ii, jc, jj, jat
+   real(wp), allocatable :: displdir(:, :), g(:, :), dipdir(:, :), poldir(:, :)
    real(wp) :: t0, t1, w0, w1
-   real(wp), allocatable :: gr(:, :), gl(:, :)
 
    call timing(t0, w0)
-   step2 = 0.5_wp/step
+   N = 3*mol0%n
+   ndispl = 3*size(list)
 
-   !$omp parallel if (self%threadsafe) default(none) &
-   !$omp shared(self, env, mol0, chk0, list, step, hess, dipgrad, polgrad, step2, t0, w0) &
-   !$omp private(kat, iat, jat, jc, jj, ii, er, el, egap, gr, gl, sr, sl, dr, dl, alphar, alphal, t1, w1)
-
-   allocate (gr(3, mol0%n), gl(3, mol0%n))
-
-   !$omp do collapse(2) schedule(runtime)
+   ! Build Cartesian unit displacement vectors (column-major)
+   allocate(displdir(N, ndispl))
+   displdir = 0.0_wp
    do kat = 1, size(list)
+      iat = list(kat)
       do ic = 1, 3
+         ii = 3*(kat - 1) + ic
+         displdir(3*(iat - 1) + ic, ii) = 1.0_wp
+      end do
+   end do
 
-         iat = list(kat)
-         ii = 3*(iat - 1) + ic
-         er = 0.0_wp
-         el = 0.0_wp
-         gr = 0.0_wp
-         gl = 0.0_wp
+   ! Allocate gradient derivative matrix
+   allocate(g(N, ndispl))
+   g = 0.0_wp
 
-         call hessian_point(self, env, mol0, chk0, iat, ic, +step, er, gr, sr, egap, dr, alphar)
-         call hessian_point(self, env, mol0, chk0, iat, ic, -step, el, gl, sl, egap, dl, alphal)
+   if (present(polgrad)) then
+      allocate(poldir(6, ndispl))
+      poldir = 0.0_wp
+   end if
+   allocate(dipdir(3, ndispl))
+   dipdir = 0.0_wp
 
-         if (present(polgrad)) then
-            polgrad(1, ii) = (alphar(1, 1) - alphal(1, 1))*step2
-            polgrad(2, ii) = (alphar(1, 2) - alphal(1, 2))*step2
-            polgrad(3, ii) = (alphar(2, 2) - alphal(2, 2))*step2
-            polgrad(4, ii) = (alphar(1, 3) - alphal(1, 3))*step2
-            polgrad(5, ii) = (alphar(2, 3) - alphal(2, 3))*step2
-            polgrad(6, ii) = (alphar(3, 3) - alphal(3, 3))*step2
-         end if
+   ! Evaluate gradient derivatives (double-sided) along Cartesian directions
+   block
+      real(wp), allocatable :: g0_dummy(:)
+      real(wp) :: dip0_dummy(3), alpha0_dummy(3, 3)
+      allocate(g0_dummy(N), source=0.0_wp)
+      dip0_dummy = 0.0_wp
+      alpha0_dummy = 0.0_wp
+      call get_gradient_derivs(self, env, step, 0, ndispl, displdir, mol0, chk0, &
+         & g0_dummy, .true., g, dip0_dummy, alpha0_dummy, dipdir, poldir)
+   end block
 
-         dipgrad(:, ii) = (dr - dl)*step2
-
+   ! Assemble hessian, dipgrad, polgrad from derivative columns
+   !$omp parallel if (self%threadsafe) default(none) &
+   !$omp shared(hess, dipgrad, polgrad, g, dipdir, poldir, displdir, list, mol0, ndispl, N) &
+   !$omp private(kat, iat, ic, ii, jc, jj, jat)
+   !$omp do
+   do kat = 1, size(list)
+      iat = list(kat)
+      do ic = 1, 3
+         ii = 3*(kat - 1) + ic
+         ! hessian column: g(:, ii) is gradient along displacement ii
+         ! hess(:, 3*(iat-1)+ic) += g(:, ii) / step  (displmax=1, factor=0.5, doublesided)
+         ! get_gradient_derivs already applies /step*displmax*factor, so g = (gl-gr)/(2*step)
+         ! hess(jj, col) = dg/dx = (g_r - g_l)/(2*step) = g(:, ii) value
          do jat = 1, mol0%n
             do jc = 1, 3
                jj = 3*(jat - 1) + jc
-               hess(jj, ii) = hess(jj, ii) &
-                  & + (gr(jc, jat) - gl(jc, jat))*step2
+               hess(jj, 3*(iat - 1) + ic) = hess(jj, 3*(iat - 1) + ic) + g(jj, ii)
             end do
          end do
-
-         if (kat == 3 .and. ic == 3) then
-            !$omp critical(xtb_numdiff2)
-            call timing(t1, w1)
-            write (*, '("estimated CPU  time",F10.2," min")') &
-               & 0.3333333_wp*size(list)*(t1 - t0)/60.0_wp
-            write (*, '("estimated wall time",F10.2," min")') &
-               & 0.3333333_wp*size(list)*(w1 - w0)/60.0_wp
-            !$omp end critical(xtb_numdiff2)
+         ! dipgrad column
+         dipgrad(:, 3*(iat - 1) + ic) = dipgrad(:, 3*(iat - 1) + ic) + dipdir(:, ii)
+         ! polgrad column
+         if (present(polgrad)) then
+            polgrad(:, 3*(iat - 1) + ic) = polgrad(:, 3*(iat - 1) + ic) + poldir(:, ii)
          end if
-
       end do
    end do
+   !$omp end do
    !$omp end parallel
-end subroutine hessian
 
-subroutine hessian_point(self, env, mol0, chk0, iat, ic, step, energy, gradient, sigma, egap, dipole, alpha)
-   class(TCalculator), intent(inout) :: self
-   type(TEnvironment), intent(inout) :: env
-   type(TMolecule), intent(in) :: mol0
-   type(TRestart), intent(in) :: chk0
-   integer, intent(in) :: ic, iat
-   real(wp), intent(in) :: step
-   real(wp), intent(out) :: energy
-   real(wp), intent(out) :: gradient(:, :)
-   real(wp), intent(out) :: sigma(3, 3)
-   real(wp), intent(out) :: egap
-   real(wp), intent(out) :: dipole(3)
-   real(wp), intent(out) :: alpha(3, 3)
+   ! timing estimate (matches old behavior: print after 3rd atom, 3rd coord)
+   call timing(t1, w1)
+   write (*, '("estimated CPU  time",F10.2," min")') &
+      & 0.3333333_wp*size(list)*(t1 - t0)/60.0_wp
+   write (*, '("estimated wall time",F10.2," min")') &
+      & 0.3333333_wp*size(list)*(w1 - w0)/60.0_wp
 
-   ! internal variables
-   type(TMolecule) :: mol
-   type(TRestart) :: chk
-   type(scc_results) :: res
-
-   call mol%copy(mol0)
-   mol%xyz(ic, iat) = mol0%xyz(ic, iat) + step
-   call chk%copy(chk0)
-   call self%singlepoint(env, mol, chk, -1, .true., energy, gradient, sigma, egap, res)
-
-   dipole = res%dipole
-   alpha(:, :) = res%alpha
-
-end subroutine hessian_point
+end subroutine hessian_numdiff
 
 !> Implementation according to Wang et al. (https://doi.org/10.1021/acs.jctc.5c01354)
-subroutine odlrhessian(self, env, mol0, chk0, step, hess, final_err, dipgrad, polgrad)
+subroutine hessian_odlr(self, env, mol0, chk0, step, hess, final_err, dipgrad, polgrad)
    character(len=*), parameter :: source = "hessian_odlr"
    !> Single point calculator
    class(TCalculator), intent(inout) :: self
@@ -239,7 +280,7 @@ subroutine odlrhessian(self, env, mol0, chk0, step, hess, final_err, dipgrad, po
    !> Array to add polarizability gradient to
    real(wp), intent(inout), optional :: polgrad(:, :)
 
-   real(wp), parameter :: dmax = 1.0_wp, eps = 1.0e-8_wp, eps2 = 1.0e-15_wp, imagthr = 1.0e-8_wp
+   real(wp), parameter :: dmax = 1.0_wp, imagthr = eps2
    real(wp), parameter :: identity3(3, 3) = reshape([1, 0, 0, 0, 1, 0, 0, 0, 1], shape(identity3))
    ! iterative imaginary-frequency repair parameters
    real(wp), parameter :: neg_sig_min_rcm = 5.0_wp, neg_add_cutoff_rcm = 200.0_wp
@@ -396,7 +437,7 @@ subroutine odlrhessian(self, env, mol0, chk0, step, hess, final_err, dipgrad, po
          rot_norm = rot_norm + dot_product(cross, cross)
       end do
       rot_norm = sqrt(rot_norm)
-      if (rot_norm <= eps2) cycle
+      if (rot_norm <= eps) cycle
 
       do j = 1, mol0%n
          g(3*j - 2, rmode) = (ax(2, i)*tmp_grad(3, j) - ax(3, i)*tmp_grad(2, j))/rot_norm
@@ -449,7 +490,7 @@ subroutine odlrhessian(self, env, mol0, chk0, step, hess, final_err, dipgrad, po
 
    ! populate displdir
    ndispl0 = Ntr + 1
-   call gen_displdir(N, ndispl0, h0, max_nb, neighborlist, nbcounts, eps, eps2, displdir, ndispl_final, env%unit)
+   call gen_displdir(N, ndispl0, h0, max_nb, neighborlist, nbcounts, eps2, eps, displdir, ndispl_final, env%unit)
 
    ! ========== GRADIENT DERIVATIVES ==========
    ! write(env%unit, '(A)') "Calculating gradient derivatives"
@@ -527,7 +568,7 @@ subroutine odlrhessian(self, env, mol0, chk0, step, hess, final_err, dipgrad, po
                vscratch = vscratch - vdot*sel_modes(:, k)
             end do
             dist = norm2(vscratch)
-            if (dist < eps2) cycle
+            if (dist < eps) cycle
             nadd = nadd + 1
             sel_modes(:, nadd) = vscratch/dist
             sel_freqs(nadd) = cand_freqs(j)
@@ -628,7 +669,7 @@ subroutine odlrhessian(self, env, mol0, chk0, step, hess, final_err, dipgrad, po
    end if
    ! ================================
 
-end subroutine odlrhessian
+end subroutine hessian_odlr
 
 subroutine get_gradient_derivs(self, env, step, ndispl0, ndispl_final, displdir, mol0, chk0, g0, doublesided, &
    & g, dip0, alpha0, dipdir, poldir)
