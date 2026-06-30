@@ -37,25 +37,21 @@ module xtb_type_calculator
 
    !> Base calculator
    type, abstract :: TCalculator
-
       real(wp) :: accuracy
       logical :: lSolv = .false.
       type(TSolvModel), allocatable :: solvation
       logical :: threadsafe = .true.
-
    contains
+      !> Perform single point calculation
+      procedure(singlepoint), deferred :: singlepoint
+      !> Perform hessian calculation
+      procedure :: hessian
+      !> Write informative printout
+      procedure(writeInfo), deferred :: writeInfo
+   end type TCalculator
 
-   !> Perform single point calculation
-   procedure(singlepoint), deferred :: singlepoint
-
-   !> Perform hessian calculation
-   procedure :: hessian
-
-   !> Write informative printout
-   procedure(writeInfo), deferred :: writeInfo
-
-
-end type TCalculator
+   real(wp), parameter :: eps = epsilon(0.0_wp)
+   real(wp), parameter :: eps2 = sqrt(eps)
 
 abstract interface
    subroutine singlepoint(self, env, mol, chk, printlevel, restart, &
@@ -96,9 +92,6 @@ abstract interface
       type(TMolecule), intent(in) :: mol
    end subroutine writeInfo
 end interface
-
-   real(wp), parameter :: eps = epsilon(0.0_wp)
-   real(wp), parameter :: eps2 = sqrt(eps)
 
 contains
 
