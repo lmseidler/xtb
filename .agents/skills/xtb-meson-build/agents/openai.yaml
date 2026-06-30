@@ -1,0 +1,4 @@
+interface:
+  display_name: "xTB Meson Build"
+  short_description: "Build and test xTB worktrees with Meson in gnu-15."
+  default_prompt: "Use this skill to configure, compile, test, and profile an xTB worktree with the gnu-15 conda environment."

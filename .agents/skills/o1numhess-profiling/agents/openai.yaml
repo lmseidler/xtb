@@ -1,0 +1,4 @@
+interface:
+  display_name: "O1NumHess Profiling"
+  short_description: "Profile xtb O1NumHess runs reproducibly"
+  default_prompt: "Use $o1numhess-profiling to profile caffeine and taxol O1NumHess timings and compare them to the stored baseline."
