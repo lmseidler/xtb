@@ -82,7 +82,7 @@ subroutine gen_local_hessian(env, ndispl_final, distmat, displdir, g, dmax, hess
    real(wp), intent(out) :: hess_out(:, :)
 
    real(wp), parameter :: lam = 1.0e-2_wp, bet = 1.5_wp, ddmax = 5.0_wp
-   
+
    ! Local work arrays
    type(odlr_operator_data) :: ctx
    real(wp), allocatable :: rhs(:, :), rhsv(:), sol(:)
@@ -98,7 +98,7 @@ subroutine gen_local_hessian(env, ndispl_final, distmat, displdir, g, dmax, hess
    ctx%displdir => displdir
 
    ! Calculate Regularization Term W2
-   ctx%W2 = lam * max(0.0_wp, distmat(:, :) - dmax)**(2.0_wp * bet)
+   ctx%W2 = lam * max(0.0_wp, distmat(:, :)-dmax)**(2.0_wp*bet)
 
    ! Calculate rhs
    allocate(rhs(N, N))
@@ -107,11 +107,11 @@ subroutine gen_local_hessian(env, ndispl_final, distmat, displdir, g, dmax, hess
 
    ! Masks and Packing
    allocate(ctx%mask(N, N))
-   ctx%mask = (distmat < (dmax + ddmax))
+   ctx%mask = (distmat < (dmax+ddmax))
    do i = 2, N
       ctx%mask(i, 1:i-1) = .false.
    end do
-   
+
    ! RHS Vector (b in Ax=b)
    rhsv = pack_sym(rhs, ctx%mask)
    ndim = size(rhsv)
@@ -160,10 +160,10 @@ subroutine odlr_operator(x, y, env, ctx)
    call mctc_gemm(op_data%tmp, op_data%displdir(:, :op_data%ndispl_final), op_data%tmp2)
    call mctc_gemm(op_data%tmp2, op_data%displdir(:, :op_data%ndispl_final), op_data%f1, transb="t")
 
-   op_data%f1 = (op_data%f1 + transpose(op_data%f1)) / 2.0_wp
+   op_data%f1 = (op_data%f1+transpose(op_data%f1)) / 2.0_wp
    op_data%f2 = op_data%W2 * op_data%tmp
 
-   y = pack_sym(op_data%f1 + op_data%f2, op_data%mask)
+   y = pack_sym(op_data%f1+op_data%f2, op_data%mask)
 end subroutine odlr_operator
 
 !> Generic Conjugate Gradient Solver
@@ -216,7 +216,7 @@ subroutine cg(env, operator, ndim, rhs, x, info, x0, ctx)
     if (k == max_iter) then
        info = 1
     end if
- end subroutine cg
+end subroutine cg
 
 !> Corrects Hessian hnum using a symmetric, low-rank update
 !> so that g approx hnum * displdir
@@ -224,9 +224,9 @@ subroutine cg(env, operator, ndim, rhs, x, info, x0, ctx)
 subroutine lr_loop(env, ndispl, g, hess_out, displdir, final_err)
    type(TEnvironment), intent(inout) :: env
    integer, intent(in) :: ndispl
-   real(wp), intent(in) :: g(:, :)    ! Input Gradients
+   real(wp), intent(in) :: g(:, :) ! Input Gradients
    real(wp), intent(inout) :: hess_out(:, :) ! Hessian to correct
-   real(wp), intent(in) :: displdir(:, :)    ! Displacement directions
+   real(wp), intent(in) :: displdir(:, :) ! Displacement directions
    real(wp), intent(out) :: final_err ! Final residual error (relative)
 
    real(wp), parameter :: scale_eps = 1.0e-3_wp
@@ -270,13 +270,13 @@ subroutine lr_loop(env, ndispl, g, hess_out, displdir, final_err)
 
       if (rnorm < thresh_LR) then
          exit loop_lr
-      else if (abs(rnorm - rnorm_prev) < thresh_LR) then
+      else if (abs(rnorm-rnorm_prev) < thresh_LR) then
          exit loop_lr
       end if
       rnorm_prev = rnorm
 
       call mctc_gemm(resid, xscaled(:, :ndispl), hcorr, transb="t")
-      hcorr = 0.5_wp * (hcorr + transpose(hcorr))
+      hcorr = 0.5_wp * (hcorr+transpose(hcorr))
       hess_out = hess_out + hcorr
 
    end do loop_lr
@@ -294,10 +294,10 @@ function unpack_sym(v, mask, n) result(H)
    integer, intent(in) :: n
    real(wp) :: H(n, n)
    integer :: i
-   
+
    H = 0.0_wp
    H = unpack(v, mask, field=0.0_wp)
-   
+
    ! Symmetrize
    do i = 2, n
       H(i, 1:i-1) = H(1:i-1, i)
@@ -309,9 +309,9 @@ function pack_sym(m, mask) result(v)
    real(wp), intent(in) :: m(:, :)
    logical, intent(in) :: mask(:, :)
    real(wp), allocatable :: v(:)
-   
+
    ! symmetrize, then pack
-   v = pack((m + transpose(m)) * 0.5_wp, mask)
+   v = pack((m+transpose(m))*0.5_wp, mask)
 end function pack_sym
 
 !> Setup a coordinate neighbor list from atom vdW radii.
@@ -339,13 +339,13 @@ subroutine get_vdw_neighbor_list(xyz, at, delta_r, nblist)
          if (i == j) then
             rij = 0.0_wp
          else
-            rij = sqrt(sum((xyz(:, i) - xyz(:, j))**2))
+            rij = sqrt(sum((xyz(:, i)-xyz(:, j))**2))
          end if
          cutoff = rvdw(i) + rvdw(j) + delta_r
          if (rij <= cutoff) then
             do ic = 1, 3
                do jc = 1, 3
-                  call add_neighbor(nblist(3 * (i - 1) + ic), 3 * (j - 1) + jc)
+                  call add_neighbor(nblist(3*(i-1)+ic), 3*(j-1)+jc)
                end do
             end do
          end if
@@ -365,9 +365,9 @@ subroutine add_neighbor(list, val)
       list%neighbors(1) = val
    else
       sz = size(list%neighbors)
-      allocate(tmp(sz + 1))
+      allocate(tmp(sz+1))
       tmp(1:sz) = list%neighbors
-      tmp(sz + 1) = val
+      tmp(sz+1) = val
       call move_alloc(tmp, list%neighbors)
    end if
 end subroutine add_neighbor
@@ -377,7 +377,7 @@ subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
                         eps, eps2, displdir, ndispl_final, unit)
    integer, intent(in) :: n, ndispl0, max_nb
    !> Initial guess Hessian
-   real(wp), intent(in) :: h0(n,n)
+   real(wp), intent(in) :: h0(n, n)
    !> Neighbor list
    type(adj_list), intent(in) :: nblist(:)
    !> Number of neighbors per atom
@@ -406,7 +406,7 @@ subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
    integer :: clk_a, clk_b, clk_c, clk_d, clk_e
    real(wp) :: prof_extract, prof_orth, prof_proj, prof_diag, prof_sign, prof_wall
    ! Thread-private work arrays for parallel region
-   real(wp), allocatable :: submat_local(:,:), projmat_local(:,:), vec_subset_local(:,:), tmp_local(:,:), work_local(:)
+   real(wp), allocatable :: submat_local(:, :), projmat_local(:, :), vec_subset_local(:, :), tmp_local(:, :), work_local(:)
    real(wp), allocatable :: eigvec_local(:, :)
    integer, allocatable :: iwork_local(:), isuppz_local(:)
 
@@ -433,7 +433,7 @@ subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
 
    done = .false.
 
-   ! --- Open parallel region once ---
+   ! Open parallel region once
    !$omp parallel default(none) &
    !$omp shared(n, ndispl0, nblist, nbcounts, h0, displdir, max_nb, eye, locev_store, &
    !$omp        ev, coverage, done, ndispl_final, eps, eps2, prof_rate, prof_sign) &
@@ -454,7 +454,7 @@ subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
    allocate(isuppz_local(max(1, 2*max_nb)))
    allocate(eigvec_local(max_nb, 1))
 
-   ! --- Outer Loop: Generate new directions ---
+   ! Outer loop: generate new directions
    do n_curr = ndispl0, n - 1
       if (done) exit
 
@@ -463,7 +463,7 @@ subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
       coverage = 0.0_wp
       !$omp end single
 
-      ! --- Parallel Phase: Compute local eigenvectors ---
+      ! Parallel phase: compute local eigenvectors
 
       !$omp do schedule(runtime)
       do j = 1, n
@@ -529,7 +529,7 @@ subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
             if (u2 < orth_tol) cycle
             locind = locind + 1
             tmp_local(1:nnb, locind) = locev(1:nnb) / sqrt(u2)
-            if (locind >= nnb - qn) exit
+            if (locind >= nnb-qn) exit
          end do
          call system_clock(clk_c)
 
@@ -543,7 +543,7 @@ subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
             & projmat_local(:locind, :locind), transa="t")
 
          ! Symmetrize
-         projmat_local(:locind, :locind) = 0.5_wp * (projmat_local(:locind, :locind) + transpose(projmat_local(:locind, :locind)))
+         projmat_local(:locind, :locind) = 0.5_wp * (projmat_local(:locind, :locind)+transpose(projmat_local(:locind, :locind)))
          call system_clock(clk_d)
 
          ! 3. Largest-eigenpair diagonalization
@@ -551,11 +551,11 @@ subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
             & 0.0_wp, m_eig, loceigs, eigvec_local, max_nb, isuppz_local, work_local, size(work_local), &
             & iwork_local, size(iwork_local), info)
          call system_clock(clk_e)
-         prof_extract = prof_extract + real(clk_b - clk_a, wp) / real(prof_rate, wp)
-         prof_orth = prof_orth + real(clk_c - clk_b, wp) / real(prof_rate, wp)
-         prof_proj = prof_proj + real(clk_d - clk_c, wp) / real(prof_rate, wp)
-         prof_diag = prof_diag + real(clk_e - clk_d, wp) / real(prof_rate, wp)
-         
+         prof_extract = prof_extract + real(clk_b-clk_a, wp) / real(prof_rate, wp)
+         prof_orth = prof_orth + real(clk_c-clk_b, wp) / real(prof_rate, wp)
+         prof_proj = prof_proj + real(clk_d-clk_c, wp) / real(prof_rate, wp)
+         prof_diag = prof_diag + real(clk_e-clk_d, wp) / real(prof_rate, wp)
+
          ! Store the lifted eigenvector for the serial phase.
          locev_store(1:nnb, j) = 0.0_wp
          do p = 1, locind
@@ -564,10 +564,10 @@ subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
       end do
       !$omp end do
 
-       ! --- Serial Phase: Sign fixing and accumulation ---
-       !$omp single
-       call system_clock(prof_s0)
-       do j = 1, n
+      ! Serial phase: sign fixing and accumulation
+      !$omp single
+      call system_clock(prof_s0)
+      do j = 1, n
          nnb = nbcounts(j)
          nb_idx(:nnb) = nblist(j)%neighbors(:nnb)
 
@@ -582,22 +582,22 @@ subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
          norm_ev2 = 0.0_wp
          do p = 1, nnb
             idx = nb_idx(p)
-            norm_ev1 = norm_ev1 + ((coverage(idx)*ev(idx) + locev(p))/(coverage(idx)+1.0_wp))**2
-            norm_ev2 = norm_ev2 + ((coverage(idx)*ev(idx) - locev(p))/(coverage(idx)+1.0_wp))**2
+            norm_ev1 = norm_ev1 + ((coverage(idx)*ev(idx)+locev(p))/(coverage(idx)+1.0_wp))**2
+            norm_ev2 = norm_ev2 + ((coverage(idx)*ev(idx)-locev(p))/(coverage(idx)+1.0_wp))**2
          end do
          norm_ev1 = sqrt(norm_ev1)
          norm_ev2 = sqrt(norm_ev2)
-         
+
          ! Apply update
-         if (norm_ev1 > norm_ev2 + eps) then
+         if (norm_ev1 > norm_ev2+eps) then
             do p = 1, nnb
                idx = nb_idx(p)
-               ev(idx) = (coverage(idx)*ev(idx) + locev(p))/(coverage(idx)+1.0_wp)
+               ev(idx) = (coverage(idx)*ev(idx)+locev(p)) / (coverage(idx)+1.0_wp)
             end do
-         else if (norm_ev1 < norm_ev2 - eps) then
+         else if (norm_ev1 < norm_ev2-eps) then
             do p = 1, nnb
                idx = nb_idx(p)
-               ev(idx) = (coverage(idx)*ev(idx) - locev(p))/(coverage(idx)+1.0_wp)
+               ev(idx) = (coverage(idx)*ev(idx)-locev(p)) / (coverage(idx)+1.0_wp)
             end do
          else
             ! Deterministic sign fix based on max element
@@ -605,12 +605,12 @@ subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
             if (locev(locind) > 0.0_wp) then
                do p = 1, nnb
                   idx = nb_idx(p)
-                  ev(idx) = (coverage(idx)*ev(idx) + locev(p))/(coverage(idx)+1.0_wp)
+                  ev(idx) = (coverage(idx)*ev(idx)+locev(p)) / (coverage(idx)+1.0_wp)
                end do
             else
                do p = 1, nnb
                   idx = nb_idx(p)
-                  ev(idx) = (coverage(idx)*ev(idx) - locev(p))/(coverage(idx)+1.0_wp)
+                  ev(idx) = (coverage(idx)*ev(idx)-locev(p)) / (coverage(idx)+1.0_wp)
                end do
             end if
          end if
@@ -626,19 +626,19 @@ subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
          d_dot = mctc_dot(ev, displdir(:, k))
          ev = ev - d_dot * displdir(:, k)
       end do
-      ! --- Check Norm ---
+      ! Check norm
       v_norm = norm2(ev)
-      
+
       if (v_norm < eps2) then
          done = .true.
       else
          ! Normalize and store
          ev = ev / v_norm
-         displdir(:, n_curr + 1) = ev
+         displdir(:, n_curr+1) = ev
          ndispl_final = n_curr + 1
       end if
       call system_clock(prof_s1)
-      prof_sign = prof_sign + real(prof_s1 - prof_s0, wp) / real(prof_rate, wp)
+      prof_sign = prof_sign + real(prof_s1-prof_s0, wp) / real(prof_rate, wp)
       !$omp end single
    end do
 
@@ -648,12 +648,12 @@ subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
 
    deallocate(eye, locev_store)
    call system_clock(prof_t1)
-   prof_wall = real(prof_t1 - prof_t0, wp) / real(prof_rate, wp)
+   prof_wall = real(prof_t1-prof_t0, wp) / real(prof_rate, wp)
    if (present(unit)) then
       if (unit > 0) then
-         write(unit,'("PROF gen_displdir: wall=",f10.3," s, evals=",i0,", avg_nnb=",f8.2,", max_nnb=",i0)') &
+         write(unit, '("PROF gen_displdir: wall=",f10.3," s, evals=",i0,", avg_nnb=",f8.2,", max_nnb=",i0)') &
             & prof_wall, prof_evals, real(prof_sum_nnb, wp) / real(max(1, prof_evals), wp), prof_max_nnb
-         write(unit,'("PROF gen_displdir: extract=",f10.3," s, orth=",f10.3," s, proj=",f10.3," s, diag=",f10.3," s, sign=",f10.3," s")') &
+         write(unit, '("PROF gen_displdir: extract=",f10.3," s, orth=",f10.3," s, proj=",f10.3," s, diag=",f10.3," s, sign=",f10.3," s")') &
             & prof_extract, prof_orth, prof_proj, prof_diag, prof_sign
          flush(unit)
       end if
@@ -677,9 +677,9 @@ subroutine swart(env, xyz, at, hess_out)
    real(wp), allocatable :: screenfunc(:, :), hess_local(:, :)
    real(wp) :: ri, rj
    integer :: i, j, k, nat, N, i1, i2, j1, j2, k1, k2
-   
+
    nat = size(xyz, 2)
-   N = 3*nat
+   N = 3 * nat
 
    hess_out = 0.0_wp
 
@@ -694,7 +694,7 @@ subroutine swart(env, xyz, at, hess_out)
          end if
 
          equildist = ri + rj
-         screenfunc(i, j) = exp(1.0_wp - norm2(xyz(:, i) - xyz(:, j)) / equildist)
+         screenfunc(i, j) = exp(1.0_wp-norm2(xyz(:, i)-xyz(:, j))/equildist)
          screenfunc(j, i) = screenfunc(i, j)
       end do
    end do
@@ -710,8 +710,8 @@ subroutine swart(env, xyz, at, hess_out)
    do i = 1, nat
       do j = i + 1, nat
          Hint = 0.35_wp * screenfunc(i, j)**3
-         bmat6 = bmat_bond(xyz(:, i) - xyz(:, j))
-         outer6 = (spread(bmat6, dim=2, ncopies=6) * spread(bmat6, dim=1, ncopies=6))
+         bmat6 = bmat_bond(xyz(:, i)-xyz(:, j))
+         outer6 = (spread(bmat6, dim=2, ncopies=6)*spread(bmat6, dim=1, ncopies=6))
          i1 = 3 * i - 2
          i2 = 3 * i
          j1 = 3 * j - 2
@@ -734,12 +734,12 @@ subroutine swart(env, xyz, at, hess_out)
             s_ijjk = screenfunc(i, j) * screenfunc(j, k)
             if (s_ijjk < eps1) cycle
 
-            costh = cosangle(xyz(:, i) - xyz(:, j), xyz(:, k) - xyz(:, j))
-            sinth = sqrt(max(0.0_wp, 1.0_wp - costh**2))
-            Hint = 0.075_wp * s_ijjk**2 * (f + (1 - f) * sinth)**2
-            bmat9 = bmat_angle(xyz(:, i) - xyz(:, j), xyz(:, k) - xyz(:, j))
+            costh = cosangle(xyz(:, i)-xyz(:, j), xyz(:, k)-xyz(:, j))
+            sinth = sqrt(max(0.0_wp, 1.0_wp-costh**2))
+            Hint = 0.075_wp * s_ijjk**2 * (f+(1-f)*sinth)**2
+            bmat9 = bmat_angle(xyz(:, i)-xyz(:, j), xyz(:, k)-xyz(:, j))
 
-            if (costh > 1.0_wp - tolth) then
+            if (costh > 1.0_wp-tolth) then
                th1 = 1.0_wp - costh
             else
                th1 = 1.0_wp + costh
@@ -752,10 +752,10 @@ subroutine swart(env, xyz, at, hess_out)
             k1 = 3 * k - 2
             k2 = 3 * k
             if (th1 < tolth) then
-               scalelin = (1.0_wp - (th1 / tolth)**2)**2
-               if (costh > 1.0_wp - tolth) then
-                  bmat29 = bmat_linangle(xyz(:, i) - xyz(:, j), xyz(:, k) - xyz(:, j))
-                  bmat9 = scalelin * bmat29(1, :) + (1.0_wp - scalelin) * bmat9
+               scalelin = (1.0_wp-(th1/tolth)**2)**2
+               if (costh > 1.0_wp-tolth) then
+                  bmat29 = bmat_linangle(xyz(:, i)-xyz(:, j), xyz(:, k)-xyz(:, j))
+                  bmat9 = scalelin * bmat29(1, :) + (1.0_wp-scalelin) * bmat9
                   outer9 = Hint * spread(bmat29(2, :), dim=2, ncopies=9) * spread(bmat29(2, :), dim=1, ncopies=9)
                   hess_local(i1:i2, i1:i2) = hess_local(i1:i2, i1:i2) + outer9(1:3, 1:3)
                   hess_local(i1:i2, j1:j2) = hess_local(i1:i2, j1:j2) + outer9(1:3, 4:6)
@@ -767,7 +767,7 @@ subroutine swart(env, xyz, at, hess_out)
                   hess_local(k1:k2, j1:j2) = hess_local(k1:k2, j1:j2) + outer9(7:9, 4:6)
                   hess_local(k1:k2, k1:k2) = hess_local(k1:k2, k1:k2) + outer9(7:9, 7:9)
                else
-                  bmat9 = (1.0_wp - scalelin) * bmat9
+                  bmat9 = (1.0_wp-scalelin) * bmat9
                end if
             end if
 
@@ -798,7 +798,7 @@ function bmat_bond(vec) result(bmat)
    real(wp), intent(in) :: vec(3)
 
    real(wp) :: l, bmat(6)
-   
+
    bmat = 0.0_wp
    l = norm2(vec)
 
@@ -832,10 +832,10 @@ function bmat_angle(vec1, vec2) result(bmat)
       dnvec(2, 1:3, ii) = -nvec2 * dl(2, ii) / l2
    end do
    do ii = 1, 3
-      dnvec(1, ii, ii) = dnvec(1, ii, ii) + 1.0_wp/l1
-      dnvec(2, ii, ii) = dnvec(2, ii, ii) + 1.0_wp/l2
-      dnvec(1, ii, ii+3) = dnvec(1, ii, ii+3) - 1.0_wp/l1
-      dnvec(2, ii, ii+3) = dnvec(2, ii, ii+3) - 1.0_wp/l2
+      dnvec(1, ii, ii) = dnvec(1, ii, ii) + 1.0_wp / l1
+      dnvec(2, ii, ii) = dnvec(2, ii, ii) + 1.0_wp / l2
+      dnvec(1, ii, ii+3) = dnvec(1, ii, ii+3) - 1.0_wp / l1
+      dnvec(2, ii, ii+3) = dnvec(2, ii, ii+3) - 1.0_wp / l2
    end do
 
    dinprod = 0.0_wp
@@ -846,13 +846,13 @@ function bmat_angle(vec1, vec2) result(bmat)
    end do
 
    dot_n1n2 = mctc_dot(nvec1, nvec2)
-   bmat = -dinprod / sqrt(max(1.0e-15_wp, 1.0_wp - dot_n1n2**2))
+   bmat = -dinprod / sqrt(max(1.0e-15_wp, 1.0_wp-dot_n1n2**2))
 end function bmat_angle
 
 !> Wirson B matrix for linear angles
 function bmat_linangle(vec1, vec2) result(bmat)
    real(wp), intent(in) :: vec1(3), vec2(3)
-   real(wp) :: bmat(2,9)
+   real(wp) :: bmat(2, 9)
    real(wp) :: l1, l2, nvec1(3), nvec2(3)
    real(wp) :: vn(3), vn2(3), nvn
    real(wp), parameter :: xaxis(3) = [1.0_wp, 0.0_wp, 0.0_wp], yaxis(3) = [0.0_wp, 1.0_wp, 0.0_wp]
@@ -877,9 +877,9 @@ function bmat_linangle(vec1, vec2) result(bmat)
    end if
    vn = vn / nvn
 
-   vn2(1) = (vec1(2) - vec2(2)) * vn(3) - (vec1(3) - vec2(3)) * vn(2)
-   vn2(2) = (vec1(3) - vec2(3)) * vn(1) - (vec1(1) - vec2(1)) * vn(3)
-   vn2(3) = (vec1(1) - vec2(1)) * vn(2) - (vec1(2) - vec2(2)) * vn(1)
+   vn2(1) = (vec1(2)-vec2(2)) * vn(3) - (vec1(3)-vec2(3)) * vn(2)
+   vn2(2) = (vec1(3)-vec2(3)) * vn(1) - (vec1(1)-vec2(1)) * vn(3)
+   vn2(3) = (vec1(1)-vec2(1)) * vn(2) - (vec1(2)-vec2(2)) * vn(1)
    vn2 = vn2 / norm2(vn2)
 
    bmat = 0.0_wp
@@ -893,11 +893,10 @@ end function bmat_linangle
 
 !> cos(Angle) between two vectors
 function cosangle(vec1, vec2) result(cos_theta)
-    implicit none
-    real(wp), intent(in) :: vec1(3), vec2(3)
-    real(wp) :: cos_theta
-    
-    cos_theta = mctc_dot(vec1, vec2) / (norm2(vec1) * norm2(vec2))
+   real(wp), intent(in) :: vec1(3), vec2(3)
+   real(wp) :: cos_theta
+
+   cos_theta = mctc_dot(vec1, vec2) / (norm2(vec1)*norm2(vec2))
 end function cosangle
 
 !> Find significant imaginary modes of a Cartesian Hessian using the same
@@ -933,13 +932,13 @@ subroutine find_projected_imag_modes(env, mol, hess, linear, max_modes, modes, f
    allocate(inv_sqrt_m(N), v(N))
    do ia = 1, nat
       do ic = 1, 3
-         ii = 3 * (ia - 1) + ic
+         ii = 3 * (ia-1) + ic
          inv_sqrt_m(ii) = 1.0_wp / sqrt(mol%atmass(ia))
       end do
    end do
 
    ! pack upper-by-column (j<=i), same layout as src/hessian.F90 trproj input
-   allocate(hpack(N * (N + 1) / 2))
+   allocate(hpack(N*(N+1)/2))
    k = 0
    do i = 1, N
       do j = 1, i
@@ -975,8 +974,8 @@ subroutine find_projected_imag_modes(env, mol, hess, linear, max_modes, modes, f
 
    ! lowest eigenpairs only
    ndiag = min(max_modes, N)
-   allocate(eigvec(N, ndiag), isuppz(2 * ndiag))
-   allocate(work(max(1, 200 * N)), iwork(max(1, 50 * N)))
+   allocate(eigvec(N, ndiag), isuppz(2*ndiag))
+   allocate(work(max(1, 200*N)), iwork(max(1, 50*N)))
    call lapack_syevr('V', 'I', 'U', N, Hmw, N, 0.0_wp, 0.0_wp, 1, ndiag, 0.0_wp, &
       & m_eig, eigval, eigvec, N, isuppz, work, size(work), iwork, size(iwork), info)
    if (info /= 0) then
