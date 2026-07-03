@@ -237,16 +237,14 @@ subroutine test_torsion_equivalence(error)
       & 1.0_wp, 0.0_wp, 0.0_wp, &
       & 1.5_wp, 0.8_wp, 0.2_wp, &
       & 2.0_wp, 0.9_wp, -0.5_wp], shape(xyz4))
-   real(wp) :: tau_bmat, tau_trsn
+   real(wp) :: tau_trsn
    real(wp) :: bt_bmat(3, 4), bt_trsn(3, 4)
    real(wp) :: dummy_dbt(3, 4, 3, 4)
 
-   call bmat_torsion(xyz4, tau_bmat, bt_bmat)
+   bt_bmat = bmat_torsion(xyz4)
    call Trsn(xyz4, 4, tau_trsn, bt_trsn, .false., .false., '        ', &
       &      dummy_dbt, .false.)
 
-   call check(error, tau_bmat, tau_trsn, thr=thr)
-   if (allocated(error)) return
    call check_bmat_2d_t(error, bt_bmat, bt_trsn, thr)
 end subroutine test_torsion_equivalence
 
@@ -262,7 +260,7 @@ subroutine test_torsion_fd(error)
    real(wp) :: tau, bt(3, 4), fd(3, 4)
    integer :: k, c
 
-   call bmat_torsion(xyz4, tau, bt)
+   bt = bmat_torsion(xyz4)
    fd = 0.0_wp
    do k = 1, 4
       do c = 1, 3
@@ -327,10 +325,9 @@ subroutine test_torsion_sign(error)
       & 1.0_wp, 0.0_wp, 0.0_wp, &
       & 1.5_wp, 0.8_wp, 0.0_wp], shape(xyz_b))
    real(wp) :: tau_a, tau_b
-   real(wp) :: bt_a(3, 4), bt_b(3, 4)
 
-   call bmat_torsion(xyz_a, tau_a, bt_a)
-   call bmat_torsion(xyz_b, tau_b, bt_b)
+   tau_a = torsion_val(xyz_a)
+   tau_b = torsion_val(xyz_b)
 
    ! Dihedrals should be opposite in sign
    call check(error, tau_a, -tau_b, thr=thr, &
@@ -350,7 +347,6 @@ subroutine test_torsion_atom_order(error)
       & 2.0_wp, 0.9_wp, -0.5_wp], shape(xyz_fwd))
    real(wp) :: xyz_rev(3, 4)
    real(wp) :: tau_fwd, tau_rev
-   real(wp) :: bt_fwd(3, 4), bt_rev(3, 4)
    integer :: k
 
    ! Reverse atom order: atom 4 becomes 1, 3 becomes 2, etc.
@@ -358,8 +354,8 @@ subroutine test_torsion_atom_order(error)
       xyz_rev(:, k) = xyz_fwd(:, 5 - k)
    end do
 
-   call bmat_torsion(xyz_fwd, tau_fwd, bt_fwd)
-   call bmat_torsion(xyz_rev, tau_rev, bt_rev)
+   tau_fwd = torsion_val(xyz_fwd)
+   tau_rev = torsion_val(xyz_rev)
 
    ! |tau| should be the same for reversed ordering
    call check(error, abs(tau_fwd), abs(tau_rev), thr=thr, &
@@ -378,10 +374,10 @@ subroutine test_outofplane_fd(error)
       & -0.5_wp, 0.8_wp, 0.0_wp, & ! atom 3 (in plane)
       & 0.0_wp, 0.0_wp, 0.0_wp], & ! atom 4 (central)
       & shape(xyz4))
-   real(wp) :: teta, bt(3, 4), fd(3, 4)
+   real(wp) :: bt(3, 4), fd(3, 4)
    integer :: k, c
 
-   call bmat_outofplane(xyz4, teta, bt)
+   bt = bmat_outofplane(xyz4)
    fd = 0.0_wp
    do k = 1, 4
       do c = 1, 3
@@ -404,13 +400,10 @@ subroutine test_outofplane_degenerate(error)
       & 2.0_wp, 0.0_wp, 0.0_wp, &  ! atom 3 (collinear with 2, 4)
       & 0.0_wp, 0.0_wp, 0.0_wp], & ! atom 4 (central, collinear)
       & shape(xyz_deg))
-   real(wp) :: teta, bt(3, 4)
+   real(wp) :: bt(3, 4)
 
-   call bmat_outofplane(xyz_deg, teta, bt)
+   bt = bmat_outofplane(xyz_deg)
 
-   call check(error, teta, 0.0_wp, thr=thr, &
-      & message="degenerate out-of-plane: teta should be 0")
-   if (allocated(error)) return
    ! All B-matrix entries should be zero
    call check_bmat_2d_t(error, bt, 0.0_wp*bt, thr)
 end subroutine test_outofplane_degenerate
