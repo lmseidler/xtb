@@ -40,26 +40,6 @@ module test_hessian
 
 contains
 
-function get_fixture_path(filename) result(fullpath)
-   character(len=*), intent(in) :: filename
-   character(len=:), allocatable :: fullpath
-   character(len=1024) :: base_dir
-   integer :: length, stat
-   
-   ! Get variable; status 0 means it exists
-   call get_environment_variable("TEST_FIXTURES_DIR", base_dir, length, stat)
-   
-   if (stat == 0) then
-      ! We effectively perform: "path/to/dir" // "/" // "file.txt"
-      ! On Windows this creates: "C:/path/to/dir/file.txt" (Valid)
-      ! On Linux this creates: "/path/to/dir/file.txt" (Valid)
-      fullpath = trim(base_dir) // '/' // filename
-   else
-      ! Fallback for manual running (assumes running from build dir or similar)
-      fullpath = "../test/unit/fixtures/" // filename
-   end if
-end function get_fixture_path
-
 !> Collect all exported unit tests
 subroutine collect_hessian(testsuite)
    !> Collection of tests
