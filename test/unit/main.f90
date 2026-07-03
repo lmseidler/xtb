@@ -34,6 +34,7 @@ program tester
    use test_iff, only : collect_iff
    use test_latticepoint, only : collect_latticepoint
    use test_molecule, only : collect_molecule
+   use test_model_hessian, only : collect_model_hessian
    use test_oniom, only : collect_oniom
    use test_dipro, only : collect_dipro
    use test_pbc_tools, only : collect_pbc_tools
@@ -72,6 +73,7 @@ program tester
       new_testsuite("iff", collect_iff), &
       new_testsuite("latticepoint", collect_latticepoint), &
       new_testsuite("molecule", collect_molecule), &
+      new_testsuite("model-hessian", collect_model_hessian), &
       new_testsuite("oniom", collect_oniom), &
       new_testsuite("dipro", collect_dipro), &
       new_testsuite("pbc-tools", collect_pbc_tools), &

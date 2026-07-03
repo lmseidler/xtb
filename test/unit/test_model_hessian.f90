@@ -1,0 +1,378 @@
+! This file is part of xtb.
+!
+! Copyright (C) 2026 Leopold M. Seidler
+!
+! xtb is free software: you can redistribute it and/or modify it under
+! the terms of the GNU Lesser General Public License as published by
+! the Free Software Foundation, either version 3 of the License, or
+! (at your option) any later version.
+!
+! xtb is distributed in the hope that it will be useful,
+! but WITHOUT ANY WARRANTY; without even the implied warranty of
+! MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+! GNU Lesser General Public License for more details.
+!
+! You should have received a copy of the GNU Lesser General Public License
+! along with xtb.  If not, see <https://www.gnu.org/licenses/>.
+
+!> Phase 1 behavior-lock tests for model Hessian variants.
+!> Captures current output of mh_lindh_d2, mh_lindh, mh_swart, and ddvopt
+!> before any refactoring.
+!>
+!> Reference data lives in `test/unit/fixtures/model_hessian/*.dat` as one
+!> packed Hessian value per line. On first run or with GEN_REFS=1, the tests
+!> write the files from the current code output and PASS. On later
+!> runs they compare element-wise against the stored references.
+!>
+!> Tests may encode current buggy behavior (rkl2=sum(rjk**2) in torsion,
+!> outofp2(xyz,...) in out-of-plane) — marked as behavior-lock until
+!> Phase 3 fixes them, at which point references are regenerated.
+module test_model_hessian
+   use testdrive, only : new_unittest, unittest_type, error_type, check, test_failed
+   use xtb_mctc_accuracy, only : wp
+   use xtb_type_molecule, only : TMolecule
+   use xtb_modelhessian, only : mh_lindh, mh_lindh_d2, mh_swart
+   use xtb_type_setvar, only : modhess_setvar
+   use xtb_test_molstock, only : getMolecule
+   implicit none
+   private
+   public :: collect_model_hessian
+
+   integer, parameter :: VAR_LINDH_D2 = 1
+   integer, parameter :: VAR_LINDH    = 2
+   integer, parameter :: VAR_SWART    = 3
+
+   real(wp), parameter :: thr = 100*epsilon(0.0_wp)
+
+   interface
+      subroutine ddvopt(Cart, nAtoms, Hess, iANr, s6)
+         import :: wp
+         integer, intent(in) :: nAtoms
+         real(wp), intent(in) :: Cart(3, nAtoms)
+         real(wp), intent(out) :: Hess((3*nAtoms)*(3*nAtoms+1)/2)
+         integer, intent(in) :: iANr(nAtoms)
+         real(wp), intent(in) :: s6
+      end subroutine ddvopt
+   end interface
+
+contains
+
+!> Collect all exported unit tests
+subroutine collect_model_hessian(testsuite)
+   type(unittest_type), allocatable, intent(out) :: testsuite(:)
+
+   testsuite = [ &
+      ! Lindh-D2 (1995 tables), default constants
+      new_unittest("lindh_d2_h2o", test_lindh_d2_h2o), &
+      new_unittest("lindh_d2_mindless01", test_lindh_d2_mindless01), &
+      new_unittest("lindh_d2_caffeine", test_lindh_d2_caffeine), &
+      new_unittest("lindh_d2_mgh2", test_lindh_d2_mgh2), &
+      ! Lindh 2007, default constants
+      new_unittest("lindh_h2o", test_lindh_h2o), &
+      new_unittest("lindh_mindless01", test_lindh_mindless01), &
+      new_unittest("lindh_caffeine", test_lindh_caffeine), &
+      new_unittest("lindh_mgh2", test_lindh_mgh2), &
+      ! Swart, default constants
+      new_unittest("swart_h2o", test_swart_h2o), &
+      new_unittest("swart_mindless01", test_swart_mindless01), &
+      new_unittest("swart_caffeine", test_swart_caffeine), &
+      new_unittest("swart_mgh2", test_swart_mgh2), &
+      ! Out-of-plane behavior (ko != 0)
+      new_unittest("lindh_d2_caffeine_oop", test_lindh_d2_caffeine_oop), &
+      new_unittest("lindh_caffeine_oop", test_lindh_caffeine_oop), &
+      new_unittest("swart_caffeine_oop", test_swart_caffeine_oop), &
+      ! ddvopt vs mh_lindh_d2 parity
+      new_unittest("ddvopt_vs_lindh_d2_h2o", test_ddvopt_vs_lindh_d2_h2o), &
+      new_unittest("ddvopt_vs_lindh_d2_mindless01", test_ddvopt_vs_lindh_d2_mindless01), &
+      new_unittest("ddvopt_vs_lindh_d2_caffeine", test_ddvopt_vs_lindh_d2_caffeine) &
+      ]
+
+end subroutine collect_model_hessian
+
+
+!> Default modhess_setvar matching setparam.f90 defaults
+function default_modh() result(modh)
+   type(modhess_setvar) :: modh
+   modh = modhess_setvar(kr=0.4000_wp, kf=0.1300_wp, kt=0.0075_wp, &
+      & ko=0.0_wp, kd=0.0_wp, kq=0.0_wp, rcut=70.0_wp, s6=20.0_wp)
+end function default_modh
+
+
+!> modhess_setvar with out-of-plane force constant active
+function oop_modh() result(modh)
+   type(modhess_setvar) :: modh
+   modh = modhess_setvar(kr=0.4000_wp, kf=0.1300_wp, kt=0.0075_wp, &
+      & ko=0.16_wp, kd=0.0_wp, kq=0.0_wp, rcut=70.0_wp, s6=20.0_wp)
+end function oop_modh
+
+!> Generic model Hessian test driver.
+!> Computes Hessian, compares against reference.
+subroutine test_mh(error, molname, variant, modh, label)
+   type(error_type), allocatable, intent(out) :: error
+   character(len=*), intent(in) :: molname
+   character(len=*), intent(in) :: label
+   integer, intent(in) :: variant
+   type(modhess_setvar), intent(in) :: modh
+
+   type(TMolecule) :: mol
+   real(wp), allocatable :: hess_packed(:)
+
+   call getMolecule(mol, molname)
+   call compute_mh_packed(mol, variant, modh, hess_packed)
+   call compare_or_write_ref(error, label, hess_packed)
+end subroutine test_mh
+
+!> ddvopt vs mh_lindh_d2 parity test driver.
+!> Computes both Hessians, compares ddvopt against its own reference,
+!> and reports max absolute difference vs mh_lindh_d2 (parity gap).
+subroutine test_ddvopt_parity(error, molname, label)
+   type(error_type), allocatable, intent(out) :: error
+   character(len=*), intent(in) :: molname
+   character(len=*), intent(in) :: label
+
+   type(TMolecule) :: mol
+   integer :: n, n3
+   real(wp), allocatable :: hess_ddvopt(:), hess_lindh(:)
+   real(wp) :: max_diff
+   call getMolecule(mol, molname)
+
+   n = mol%n
+   n3 = 3 * n
+   allocate(hess_ddvopt(n3*(n3+1)/2), hess_lindh(n3*(n3+1)/2))
+   hess_ddvopt = 0.0_wp
+   hess_lindh = 0.0_wp
+   call ddvopt(mol%xyz, n, hess_ddvopt, mol%at, 20.0_wp)
+   call mh_lindh_d2(mol%xyz, n, hess_lindh, mol%at, default_modh())
+   max_diff = maxval(abs(hess_ddvopt - hess_lindh))
+   call compare_or_write_ref(error, label // "_ddvopt", hess_ddvopt)
+   if (allocated(error)) return
+   call compare_or_write_ref(error, label // "_lindh_d2", hess_lindh)
+   if (allocated(error)) return
+   write(*, '(a,a,a,ES24.17E3)') "PARITY ", label, " max_abs_diff=", max_diff
+end subroutine test_ddvopt_parity
+
+
+!> Compute model Hessian, return packed array
+subroutine compute_mh_packed(mol, variant, modh, hess_packed)
+   type(TMolecule), intent(in) :: mol
+   integer, intent(in) :: variant
+   type(modhess_setvar), intent(in) :: modh
+   real(wp), allocatable, intent(out) :: hess_packed(:)
+
+   integer :: n3
+
+   n3 = 3 * mol%n
+   allocate(hess_packed(n3*(n3+1)/2))
+   hess_packed = 0.0_wp
+   select case(variant)
+   case(VAR_LINDH_D2)
+      call mh_lindh_d2(mol%xyz, mol%n, hess_packed, mol%at, modh)
+   case(VAR_LINDH)
+      call mh_lindh(mol%xyz, mol%n, hess_packed, mol%at, modh)
+   case(VAR_SWART)
+      call mh_swart(mol%xyz, mol%n, hess_packed, mol%at, modh)
+   end select
+end subroutine compute_mh_packed
+
+
+!> Path to reference file for a given label.
+function ref_path(label) result(path)
+   character(len=*), intent(in) :: label
+
+   character(len=:), allocatable :: path
+   character(len=512) :: dir
+   integer :: stat
+
+   call get_environment_variable("TEST_FIXTURES_DIR", dir, status=stat)
+   if (stat == 0 .and. len_trim(dir) > 0) then
+      path = trim(dir) // "/model_hessian/" // trim(label) // ".dat"
+   else
+      path = "test/unit/fixtures/model_hessian/" // trim(label) // ".dat"
+   end if
+end function ref_path
+
+
+!> True when GEN_REFS is set to 1 (force regeneration of files).
+function gen_refs() result(mode)
+   logical :: mode
+   character(len=8) :: buf
+   integer :: stat
+   call get_environment_variable("GEN_REFS", buf, status=stat)
+   mode = (stat == 0 .and. trim(buf) == "1")
+end function gen_refs
+
+
+!> Write packed Hessian as one value per line to a file.
+subroutine write_ref(path, packed)
+   character(len=*), intent(in) :: path
+   real(wp), intent(in) :: packed(:)
+
+   integer :: u, i
+
+   open(newunit=u, file=path, status="replace", action="write")
+   do i = 1, size(packed)
+      write(u, '(ES25.17E3)') packed(i)
+   end do
+   close(u)
+end subroutine write_ref
+
+
+!> Read reference packed Hessian from file. Returns .false. on read error.
+function read_ref(path, packed) result(ok)
+   character(len=*), intent(in) :: path
+   real(wp), allocatable, intent(out) :: packed(:)
+
+   logical :: ok
+   integer :: u, i, n, stat
+
+   ok = .false.
+   open(newunit=u, file=path, status="old", action="read", iostat=stat)
+   if (stat /= 0) then
+      return
+   end if
+   n = 0
+   do
+      read(u, *, iostat=stat)
+      if (stat /= 0) exit
+      n = n + 1
+   end do
+   rewind(u)
+   allocate(packed(n))
+   do i = 1, n
+      read(u, *, iostat=stat) packed(i)
+      if (stat /= 0) then
+         close(u)
+         return
+      end if
+   end do
+   close(u)
+   ok = .true.
+end function read_ref
+
+
+!> Compare packed Hessian against stored reference.
+!> If GEN_REFS=1 or file missing, writes reference from current output.
+!> On mismatch, prints current and reference matrices side-by-side
+!> (same style as test_hessian.f90).
+subroutine compare_or_write_ref(error, label, packed)
+   type(error_type), allocatable, intent(out) :: error
+   character(len=*), intent(in) :: label
+   real(wp), intent(in) :: packed(:)
+
+   character(len=:), allocatable :: path
+   real(wp), allocatable :: ref(:)
+   integer :: i
+   logical :: ok
+
+   path = ref_path(label)
+   if (gen_refs()) then
+      call write_ref(path, packed)
+      return
+   end if
+   ok = read_ref(path, ref)
+   if (.not. ok) then
+      call write_ref(path, packed)
+      return
+   end if
+   if (size(ref) /= size(packed)) then
+      call check(error, size(ref), size(packed))
+      return
+   end if
+   do i = 1, size(packed)
+      call check(error, packed(i), ref(i), thr=thr)
+      if (allocated(error)) exit
+   end do
+end subroutine compare_or_write_ref
+
+
+subroutine test_lindh_d2_h2o(error)
+   type(error_type), allocatable, intent(out) :: error
+   call test_mh(error, "h2o", VAR_LINDH_D2, default_modh(), "lindh_d2_h2o")
+end subroutine
+
+subroutine test_lindh_d2_mindless01(error)
+   type(error_type), allocatable, intent(out) :: error
+   call test_mh(error, "mindless01", VAR_LINDH_D2, default_modh(), "lindh_d2_mindless01")
+end subroutine
+
+subroutine test_lindh_d2_caffeine(error)
+   type(error_type), allocatable, intent(out) :: error
+   call test_mh(error, "caffeine", VAR_LINDH_D2, default_modh(), "lindh_d2_caffeine")
+end subroutine
+
+subroutine test_lindh_d2_mgh2(error)
+   type(error_type), allocatable, intent(out) :: error
+   call test_mh(error, "mgh2", VAR_LINDH_D2, default_modh(), "lindh_d2_mgh2")
+end subroutine
+
+subroutine test_lindh_h2o(error)
+   type(error_type), allocatable, intent(out) :: error
+   call test_mh(error, "h2o", VAR_LINDH, default_modh(), "lindh_h2o")
+end subroutine
+
+subroutine test_lindh_mindless01(error)
+   type(error_type), allocatable, intent(out) :: error
+   call test_mh(error, "mindless01", VAR_LINDH, default_modh(), "lindh_mindless01")
+end subroutine
+
+subroutine test_lindh_caffeine(error)
+   type(error_type), allocatable, intent(out) :: error
+   call test_mh(error, "caffeine", VAR_LINDH, default_modh(), "lindh_caffeine")
+end subroutine
+
+subroutine test_lindh_mgh2(error)
+   type(error_type), allocatable, intent(out) :: error
+   call test_mh(error, "mgh2", VAR_LINDH, default_modh(), "lindh_mgh2")
+end subroutine
+
+subroutine test_swart_h2o(error)
+   type(error_type), allocatable, intent(out) :: error
+   call test_mh(error, "h2o", VAR_SWART, default_modh(), "swart_h2o")
+end subroutine
+
+subroutine test_swart_mindless01(error)
+   type(error_type), allocatable, intent(out) :: error
+   call test_mh(error, "mindless01", VAR_SWART, default_modh(), "swart_mindless01")
+end subroutine
+
+subroutine test_swart_caffeine(error)
+   type(error_type), allocatable, intent(out) :: error
+   call test_mh(error, "caffeine", VAR_SWART, default_modh(), "swart_caffeine")
+end subroutine
+
+subroutine test_swart_mgh2(error)
+   type(error_type), allocatable, intent(out) :: error
+   call test_mh(error, "mgh2", VAR_SWART, default_modh(), "swart_mgh2")
+end subroutine
+
+subroutine test_lindh_d2_caffeine_oop(error)
+   type(error_type), allocatable, intent(out) :: error
+   call test_mh(error, "caffeine", VAR_LINDH_D2, oop_modh(), "lindh_d2_caffeine_oop")
+end subroutine
+
+subroutine test_lindh_caffeine_oop(error)
+   type(error_type), allocatable, intent(out) :: error
+   call test_mh(error, "caffeine", VAR_LINDH, oop_modh(), "lindh_caffeine_oop")
+end subroutine
+
+subroutine test_swart_caffeine_oop(error)
+   type(error_type), allocatable, intent(out) :: error
+   call test_mh(error, "caffeine", VAR_SWART, oop_modh(), "swart_caffeine_oop")
+end subroutine
+
+subroutine test_ddvopt_vs_lindh_d2_h2o(error)
+   type(error_type), allocatable, intent(out) :: error
+   call test_ddvopt_parity(error, "h2o", "h2o")
+end subroutine
+
+subroutine test_ddvopt_vs_lindh_d2_mindless01(error)
+   type(error_type), allocatable, intent(out) :: error
+   call test_ddvopt_parity(error, "mindless01", "mindless01")
+end subroutine
+
+subroutine test_ddvopt_vs_lindh_d2_caffeine(error)
+   type(error_type), allocatable, intent(out) :: error
+   call test_ddvopt_parity(error, "caffeine", "caffeine")
+end subroutine
+
+end module test_model_hessian

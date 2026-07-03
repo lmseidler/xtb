@@ -36,6 +36,7 @@ set(
   "iff"
   "latticepoint"
   "molecule"
+  "model-hessian"
   "oniom"
   "dipro"
   "pbc-tools"
