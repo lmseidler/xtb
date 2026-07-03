@@ -46,6 +46,7 @@ srcs += files(
   'bfgs.f90',
   'bias_path.f90',
   'blowsy.f90',
+  'bmatrix.f90',
   'broyden.f90',
   'charge_model.f90',
   'coffee.f90',

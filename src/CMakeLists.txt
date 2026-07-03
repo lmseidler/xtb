@@ -48,6 +48,7 @@ list(APPEND srcs
   "${dir}/bfgs.f90"
   "${dir}/bias_path.f90"
   "${dir}/blowsy.f90"
+  "${dir}/bmatrix.f90"
   "${dir}/broyden.f90"
   "${dir}/charge_model.f90"
   "${dir}/coffee.f90"

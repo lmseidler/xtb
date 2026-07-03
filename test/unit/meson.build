@@ -32,8 +32,9 @@ if not testdrive_dep.found()
 endif
 
 tests = [
-  'atomlist',
-  'coordinationnumber',
+   'atomlist',
+   'bmatrix',
+   'coordinationnumber',
   'coulomb',
   'dftd3',
   'dftd4',

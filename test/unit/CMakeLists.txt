@@ -22,6 +22,7 @@ set(dir "${CMAKE_CURRENT_SOURCE_DIR}")
 set(
   tests
   "atomlist"
+  "bmatrix"
   "coordinationnumber"
   "coulomb"
   "dftd3"
