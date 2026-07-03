@@ -42,7 +42,7 @@ module test_model_hessian
    integer, parameter :: VAR_LINDH    = 2
    integer, parameter :: VAR_SWART    = 3
 
-   real(wp), parameter :: thr = 100*epsilon(0.0_wp)
+   real(wp), parameter :: thr = 10*epsilon(0.0_wp)
 
    interface
       subroutine ddvopt(Cart, nAtoms, Hess, iANr, s6)

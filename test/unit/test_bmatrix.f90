@@ -26,9 +26,9 @@ module test_bmatrix
    implicit none
    private
 
-   real(wp), parameter :: fd_eps = 1.0e-5_wp
-   real(wp), parameter :: thr = 1.0e-6_wp
-   real(wp), parameter :: thr_loose = 1.0e-4_wp
+   real(wp), parameter :: fd_eps = 1.0e-6_wp
+   real(wp), parameter :: thr = 100*epsilon(0.0_wp)
+   real(wp), parameter :: thr_loose = 1.0e-9_wp
 
    ! External Trsn from lindh.f90 for equivalence testing
    interface
@@ -84,7 +84,7 @@ subroutine test_bond_fd(error)
          fd(c + (k-1)*3) = fd_bond(xyz2, c, k)
       end do
    end do
-   call check_bmat(error, bmat, fd, thr)
+   call check_bmat(error, bmat, fd, thr_loose)
 end subroutine test_bond_fd
 
 !> Central FD for bond B-row entry (c, k)
@@ -132,7 +132,7 @@ subroutine test_angle_fd(error)
          fd(c + (k-1)*3) = fd_angle(xyz3, c, k)
       end do
    end do
-   call check_bmat(error, bmat, fd, thr)
+   call check_bmat(error, bmat, fd, thr_loose)
 end subroutine test_angle_fd
 
 !> Central FD for angle B-row entry (c, k)
@@ -196,13 +196,13 @@ subroutine test_linbend_fd(error)
       row_sum_x = bmat(row, 1) + bmat(row, 4) + bmat(row, 7)
       row_sum_y = bmat(row, 2) + bmat(row, 5) + bmat(row, 8)
       row_sum_z = bmat(row, 3) + bmat(row, 6) + bmat(row, 9)
-      call check(error, row_sum_x, 0.0_wp, thr=thr_loose, &
+      call check(error, row_sum_x, 0.0_wp, thr=thr, &
          & message="linbend row x-sum nonzero")
       if (allocated(error)) return
-      call check(error, row_sum_y, 0.0_wp, thr=thr_loose, &
+      call check(error, row_sum_y, 0.0_wp, thr=thr, &
          & message="linbend row y-sum nonzero")
       if (allocated(error)) return
-      call check(error, row_sum_z, 0.0_wp, thr=thr_loose, &
+      call check(error, row_sum_z, 0.0_wp, thr=thr, &
          & message="linbend row z-sum nonzero")
       if (allocated(error)) return
    end do
@@ -222,7 +222,7 @@ subroutine test_linbend_fd(error)
 
    ! (3) The two rows should be mutually orthogonal
    dot_rows = dot_product(bmat(1, :), bmat(2, :))
-   call check(error, dot_rows, 0.0_wp, thr=thr_loose, &
+   call check(error, dot_rows, 0.0_wp, thr=thr, &
       & message="linbend rows not orthogonal")
 end subroutine test_linbend_fd
 
@@ -333,7 +333,7 @@ subroutine test_torsion_sign(error)
    call bmat_torsion(xyz_b, tau_b, bt_b)
 
    ! Dihedrals should be opposite in sign
-   call check(error, tau_a, -tau_b, thr=thr_loose, &
+   call check(error, tau_a, -tau_b, thr=thr, &
       & message="torsion sign mismatch: mirror geometry should flip sign")
 end subroutine test_torsion_sign
 
@@ -362,7 +362,7 @@ subroutine test_torsion_atom_order(error)
    call bmat_torsion(xyz_rev, tau_rev, bt_rev)
 
    ! |tau| should be the same for reversed ordering
-   call check(error, abs(tau_fwd), abs(tau_rev), thr=thr_loose, &
+   call check(error, abs(tau_fwd), abs(tau_rev), thr=thr, &
       & message="torsion |tau| differs for reversed atom order")
 end subroutine test_torsion_atom_order
 
@@ -408,11 +408,11 @@ subroutine test_outofplane_degenerate(error)
 
    call bmat_outofplane(xyz_deg, teta, bt)
 
-   call check(error, teta, 0.0_wp, thr=thr_loose, &
+   call check(error, teta, 0.0_wp, thr=thr, &
       & message="degenerate out-of-plane: teta should be 0")
    if (allocated(error)) return
    ! All B-matrix entries should be zero
-   call check_bmat_2d_t(error, bt, 0.0_wp*bt, thr_loose)
+   call check_bmat_2d_t(error, bt, 0.0_wp*bt, thr)
 end subroutine test_outofplane_degenerate
 
 !> Central FD for out-of-plane B-row entry (c, k)

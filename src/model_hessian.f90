@@ -187,7 +187,7 @@ pure subroutine mh_swart_stretch(n,at,xyz,hess,kr,kd,s6,rcov,rvdw,lcutoff,rcut)
          c6i=c6(at(i))
          c6j=c6(at(j))
          c6ij=sqrt(c6i*c6j)
-         rv=(vander(at(i))+vander(at(j)))*aatoau
+         rv=(vander(at(i))+vander(at(j)))
 
          call getvdwxx(xij, yij, zij, c6ij, s6, rv, vdw(1,1))
          call getvdwxy(xij, yij, zij, c6ij, s6, rv, vdw(1,2))
@@ -517,7 +517,7 @@ pure subroutine mh_swart_torsion(n,at,xyz,hess,kt,kd,rcov,rvdw,lcutoff)
 
                rij2=sum(rij**2)
                rjk2=sum(rjk**2)
-               rkl2=sum(rjk**2)
+               rkl2=sum(rkl**2)
 
                cosfi2=dot_product(rij,rjk)/sqrt(rij2*rjk2)
                if (abs(cosfi2).gt.cosfi_max) cycle
@@ -652,7 +652,7 @@ pure subroutine mh_swart_outofp(n,at,xyz,hess,ko,kd,rcov,rvdw,lcutoff)
 
                !tij = max(tij,10*min_fk)
 
-               call outofp2(xyz,tau,c)
+               call outofp2(txyz,tau,c)
                If (abs(tau).gt.45.0d0*(pi/180.d0)) cycle
 
                si = c(:,4)
@@ -902,7 +902,7 @@ pure subroutine mh_lindh_stretch(n,at,xyz,hess,kr,kd,s6,aav,rav,dav,lcutoff,rcut
          c6i=c6(at(i))
          c6j=c6(at(j))
          c6ij=sqrt(c6i*c6j)
-         rv=(vander(at(i))+vander(at(j)))*aatoau
+         rv=(vander(at(i))+vander(at(j)))
 
          call getvdwxx(xij, yij, zij, c6ij, s6, rv, vdw(1,1))
          call getvdwxy(xij, yij, zij, c6ij, s6, rv, vdw(1,2))
@@ -1246,7 +1246,7 @@ subroutine mh_lindh_torsion(n,at,xyz,hess,kt,kd,aav,rav,dav,lcutoff)
 
                rij2=sum(rij**2)
                rjk2=sum(rjk**2)
-               rkl2=sum(rjk**2)
+               rkl2=sum(rkl**2)
 
                cosfi2=dot_product(rij,rjk)/sqrt(rij2*rjk2)
                if (abs(cosfi2).gt.cosfi_max) cycle
@@ -1391,7 +1391,7 @@ pure subroutine mh_lindh_outofp(n,at,xyz,hess,ko,kd,aav,rav,dav,lcutoff)
 
                !tij = max(tij,10*min_fk)
 
-               call outofp2(xyz,tau,c)
+               call outofp2(txyz,tau,c)
                If (abs(tau).gt.45.0d0*(pi/180.d0)) cycle
 
                si = c(:,4)
