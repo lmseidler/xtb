@@ -27,6 +27,8 @@ module xtb_modelhessian
    use xtb_mctc_accuracy, only : wp
    use xtb_mctc_convert
    use xtb_chargemodel
+   use xtb_bmatrix, only : bmat_angle, bmat_linbend, bmat_torsion, &
+      & bmat_outofplane, oop_angle
    implicit none
 
    public :: mh_lindh
@@ -256,13 +258,12 @@ pure subroutine mh_swart_bend(n,at,xyz,hess,kf,kd,rcov,rvdw,lcutoff)
 
    integer  :: i,j,m,ic,jc,ii
    real(wp),parameter :: rzero = 1.0e-10_wp
-   real(wp) :: xij,yij,zij,rij2,rrij,r1
    real(wp) :: xmi,ymi,zmi,rmi2,rmi,r0mi,d0mj,gmi
    real(wp) :: xmj,ymj,zmj,rmj2,rmj,r0mj,d0mi,gmj
-   real(wp) :: test,gij,rl2,rl,rmidotrmj
-   real(wp) :: sinphi,cosphi,costhetax,costhetay,costhetaz
-   real(wp) :: alpha
-   real(wp) :: si(3),sj(3),sm(3),x(2),y(2),z(2)
+   real(wp) :: test,gij,rl2,rl
+   real(wp) :: sinphi
+   real(wp) :: si(3),sj(3),sm(3)
+   real(wp) :: bmat9(9), bmat29(2,9)
 
 !! ------------------------------------------------------------------------
 !  Hessian for bending
@@ -298,12 +299,6 @@ pure subroutine mh_swart_bend(n,at,xyz,hess,kf,kd,rcov,rvdw,lcutoff)
             test=test/(rmi*rmj)
             if (abs(test-1.0_wp).lt.1.0e-12_wp) cycle bend_jAt
 
-            xij=(xyz(1,j)-xyz(1,i))
-            yij=(xyz(2,j)-xyz(2,i))
-            zij=(xyz(3,j)-xyz(3,i))
-            rij2 = xij**2 + yij**2 + zij**2
-            rrij=sqrt(rij2)
-
             gmi = fk_swart(1.0_wp,r0mi,rmi2) &
                 + 0.5_wp*kd * fk_vdw(5.0_wp,d0mi,rmi2)
             gmj = fk_swart(1.0_wp,r0mj,rmj2) &
@@ -321,21 +316,15 @@ pure subroutine mh_swart_bend(n,at,xyz,hess,kf,kd,rcov,rvdw,lcutoff)
 
             !gij = max(gij,min_fk)
 
-            if ((rmj.gt.rzero).and.(rmi.gt.rzero).and.(rrij.gt.rzero)) then
+            if ((rmj.gt.rzero).and.(rmi.gt.rzero)) then
                sinphi=rl/(rmj*rmi)
-               rmidotrmj=xmi*xmj+ymi*ymj+zmi*zmj
-               cosphi=rmidotrmj/(rmj*rmi)
                ! none linear case
                if (sinphi.gt.rzero) then
-                  si(1)=(xmi/rmi*cosphi-xmj/rmj)/(rmi*sinphi)
-                  si(2)=(ymi/rmi*cosphi-ymj/rmj)/(rmi*sinphi)
-                  si(3)=(zmi/rmi*cosphi-zmj/rmj)/(rmi*sinphi)
-                  sj(1)=(cosphi*xmj/rmj-xmi/rmi)/(rmj*sinphi)
-                  sj(2)=(cosphi*ymj/rmj-ymi/rmi)/(rmj*sinphi)
-                  sj(3)=(cosphi*zmj/rmj-zmi/rmi)/(rmj*sinphi)
-                  sm(1)=-si(1)-sj(1)
-                  sm(2)=-si(2)-sj(2)
-                  sm(3)=-si(3)-sj(3)
+                  ! shared Wilson B row for non-linear angle (i-m-j)
+                  bmat9 = bmat_angle(xyz(:,i)-xyz(:,m), xyz(:,j)-xyz(:,m))
+                  si = bmat9(1:3)
+                  sm = bmat9(4:6)
+                  sj = bmat9(7:9)
                   do ic=1,3
                      do jc=1,3
                         if (m.gt.i) then
@@ -369,37 +358,12 @@ pure subroutine mh_swart_bend(n,at,xyz,hess,kf,kd,rcov,rvdw,lcutoff)
                      end do
                   end do
                else
-                  ! linear case
-                  if ((abs(ymi).gt.rzero).or.(abs(xmi).gt.rzero)) then
-                     x(1)=-ymi
-                     y(1)=xmi
-                     z(1)=0.0_wp
-                     x(2)=-xmi*zmi
-                     y(2)=-ymi*zmi
-                     z(2)=xmi*xmi+ymi*ymi
-                  else
-                     x(1)=1.0_wp
-                     y(1)=0.0_wp
-                     z(1)=0.0_wp
-                     x(2)=0.0_wp
-                     y(2)=1.0_wp
-                     z(2)=0.0_wp
-                  end if
+                  ! linear case: shared Wilson B rows for linear bend (two rows)
+                  bmat29 = bmat_linbend(xyz(:,i)-xyz(:,m), xyz(:,j)-xyz(:,m))
                   do ii=1,2
-                     r1=sqrt(x(ii)**2+y(ii)**2+z(ii)**2)
-                     costhetax=x(ii)/r1
-                     costhetay=y(ii)/r1
-                     costhetaz=z(ii)/r1
-                     si(1)=-costhetax/rmi
-                     si(2)=-costhetay/rmi
-                     si(3)=-costhetaz/rmi
-                     sj(1)=-costhetax/rmj
-                     sj(2)=-costhetay/rmj
-                     sj(3)=-costhetaz/rmj
-                     sm(1)=-(si(1)+sj(1))
-                     sm(2)=-(si(2)+sj(2))
-                     sm(3)=-(si(3)+sj(3))
-                     !
+                     si = bmat29(ii,1:3)
+                     sm = bmat29(ii,4:6)
+                     sj = bmat29(ii,7:9)
                      do ic=1,3
                         do jc=1,3
                            if (m.gt.i) then
@@ -436,7 +400,6 @@ pure subroutine mh_swart_bend(n,at,xyz,hess,kf,kd,rcov,rvdw,lcutoff)
                         end do
                      end do
                   end do
-
                end if
             end if
 
@@ -470,7 +433,7 @@ pure subroutine mh_swart_torsion(n,at,xyz,hess,kt,kd,rcov,rvdw,lcutoff)
    real(wp) :: rjk(3),rjk0,ajk,rjk2,d0jk,gjk
    real(wp) :: rkl(3),rkl0,akl,rkl2,d0kl,gkl
    real(wp) :: cosfi2,cosfi3,cosfi4
-   real(wp) :: beta,tij,tau
+   real(wp) :: beta,tij
    real(wp) :: si(3),sj(3),sk(3),sl(3)
 
 !! ------------------------------------------------------------------------
@@ -535,7 +498,7 @@ pure subroutine mh_swart_torsion(n,at,xyz,hess,kt,kd,rcov,rvdw,lcutoff)
 
                !tij = max(tij,10*min_fk)
 
-               call trsn2(txyz,tau,c)
+               c = bmat_torsion(txyz)
                si = c(:,1)
                sj = c(:,2)
                sk = c(:,3)
@@ -652,9 +615,10 @@ pure subroutine mh_swart_outofp(n,at,xyz,hess,ko,kd,rcov,rvdw,lcutoff)
 
                !tij = max(tij,10*min_fk)
 
-               call outofp2(txyz,tau,c)
+               tau = oop_angle(txyz)
                If (abs(tau).gt.45.0d0*(pi/180.d0)) cycle
 
+               c = bmat_outofplane(txyz)
                si = c(:,4)
                sj = c(:,1)
                sk = c(:,2)

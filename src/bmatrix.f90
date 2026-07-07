@@ -22,7 +22,7 @@ module xtb_bmatrix
 
    private
    public :: bmat_bond, bmat_angle, bmat_linbend, &
-      & bmat_torsion, bmat_outofplane
+      & bmat_torsion, bmat_outofplane, oop_angle
 
    character(len=*), parameter :: source = 'xtb_bmatrix'
 
@@ -34,8 +34,8 @@ module xtb_bmatrix
    real(wp), parameter :: tol_cross = 1.0e-10_wp
    !> Tolerance for near-linear bend detection
    real(wp), parameter :: tol_bend = 1.0e-6_wp
-   !> Smallest positive argument avoiding division by zero
-   real(wp), parameter :: eps_sqrt = 1.0e-15_wp
+   !> Avoid zero division in angle derivatives (1e-24 is ~1e-12 in energy)
+   real(wp), parameter :: eps_sqrt = 1.0e-24_wp
 
 contains
 
@@ -238,6 +238,48 @@ pure function bmat_outofplane(xyz) result(bt)
 
    bt = -bt
 end function bmat_outofplane
+
+!> Out-of-plane angle for 4-atom fragment (atom 4 central).
+!> Returns the Wilson out-of-plane angle in radians, i.e. the angle
+!> between atom 1 and the plane (2,3,4) minus pi/2. Returns 0.0 when
+!> atoms 2-3-4 are collinear (ill-defined).
+pure function oop_angle(xyz) result(theta)
+   real(wp), intent(in) :: xyz(3, 4)
+
+   real(wp) :: theta
+   real(wp) :: r2(3), r3(3), q42, q43, e42(3), e43(3)
+   real(wp) :: cosfi1, fi1
+   real(wp) :: r42(3), r43(3), c14(3, 3)
+
+   r2 = xyz(:, 2) - xyz(:, 4)
+   q42 = norm2(r2)
+   e42 = r2 / q42
+   r3 = xyz(:, 3) - xyz(:, 4)
+   q43 = norm2(r3)
+   e43 = r3 / q43
+
+   cosfi1 = dot_product(e43, e42)
+   fi1 = acos(cosfi1)
+
+   if (abs(fi1-pi) < tol_collinear) then
+      theta = 0.0_wp
+      return
+   end if
+
+   c14(:, 1) = xyz(:, 1)
+   c14(:, 2) = xyz(:, 4)
+   r42 = xyz(:, 2) - xyz(:, 4)
+   r43 = xyz(:, 3) - xyz(:, 4)
+   c14(:, 3) = crossProd(r42, r43)
+
+   if (sum(c14(:, 3)**2) < tol_cross) then
+      theta = 0.0_wp
+      return
+   end if
+   c14(:, 3) = c14(:, 3) + xyz(:, 4)
+
+   theta = bend_angle(c14) - 0.5_wp*pi
+end function oop_angle
 
 !> Stretch B row for 2-atom fragment (private helper)
 pure function bmat_strtch(xyz) result(b)
