@@ -28,7 +28,7 @@ module xtb_modelhessian
    use xtb_mctc_convert
    use xtb_chargemodel
    use xtb_bmatrix, only : bmat_angle, bmat_linbend, bmat_torsion, &
-      & bmat_outofplane, oop_angle
+      & bmat_outofplane, oop_angle, bmat_accum_packed
    implicit none
 
    public :: mh_lindh
@@ -256,13 +256,12 @@ pure subroutine mh_swart_bend(n,at,xyz,hess,kf,kd,rcov,rvdw,lcutoff)
    real(wp),intent(in)    :: rvdw(:)
    logical, intent(in)    :: lcutoff(n,n)
 
-   integer  :: i,j,m,ic,jc,ii
+   integer  :: i,j,m,ii
    real(wp),parameter :: rzero = 1.0e-10_wp
    real(wp) :: xmi,ymi,zmi,rmi2,rmi,r0mi,d0mj,gmi
    real(wp) :: xmj,ymj,zmj,rmj2,rmj,r0mj,d0mi,gmj
    real(wp) :: test,gij,rl2,rl
    real(wp) :: sinphi
-   real(wp) :: si(3),sj(3),sm(3)
    real(wp) :: bmat9(9), bmat29(2,9)
 
 !! ------------------------------------------------------------------------
@@ -316,95 +315,24 @@ pure subroutine mh_swart_bend(n,at,xyz,hess,kf,kd,rcov,rvdw,lcutoff)
 
             !gij = max(gij,min_fk)
 
-            if ((rmj.gt.rzero).and.(rmi.gt.rzero)) then
-               sinphi=rl/(rmj*rmi)
-               ! none linear case
-               if (sinphi.gt.rzero) then
-                  ! shared Wilson B row for non-linear angle (i-m-j)
-                  bmat9 = bmat_angle(xyz(:,i)-xyz(:,m), xyz(:,j)-xyz(:,m))
-                  si = bmat9(1:3)
-                  sm = bmat9(4:6)
-                  sj = bmat9(7:9)
-                  do ic=1,3
-                     do jc=1,3
-                        if (m.gt.i) then
-                           hess(ind(ic,m,jc,i))=hess(ind(ic,m,jc,i)) &
-                              +gij*sm(ic)*si(jc)
-                        else
-                           hess(ind(ic,i,jc,m))=hess(ind(ic,i,jc,m)) &
-                              +gij*si(ic)*sm(jc)
-                        end if
-                        if (m.gt.j) then
-                           hess(ind(ic,m,jc,j))=hess(ind(ic,m,jc,j)) &
-                              +gij*sm(ic)*sj(jc)
-                        else
-                           hess(ind(ic,j,jc,m))=hess(ind(ic,j,jc,m)) &
-                              +gij*sj(ic)*sm(jc)
-                        end if
-                        if (i.gt.j) then
-                           hess(ind(ic,i,jc,j))=hess(ind(ic,i,jc,j)) &
-                              +gij*si(ic)*sj(jc)
-                        else
-                           hess(ind(ic,j,jc,i))=hess(ind(ic,j,jc,i)) &
-                              +gij*sj(ic)*si(jc)
-                        end if
-                     end do
-                  end do
-                  do ic=1,3
-                     do jc=1,ic
-                        hess(ind(ic,i,jc,i))=hess(ind(ic,i,jc,i))+gij*si(ic)*si(jc)
-                        hess(ind(ic,m,jc,m))=hess(ind(ic,m,jc,m))+gij*sm(ic)*sm(jc)
-                        hess(ind(ic,j,jc,j))=hess(ind(ic,j,jc,j))+gij*sj(ic)*sj(jc)
-                     end do
-                  end do
-               else
-                  ! linear case: shared Wilson B rows for linear bend (two rows)
-                  bmat29 = bmat_linbend(xyz(:,i)-xyz(:,m), xyz(:,j)-xyz(:,m))
-                  do ii=1,2
-                     si = bmat29(ii,1:3)
-                     sm = bmat29(ii,4:6)
-                     sj = bmat29(ii,7:9)
-                     do ic=1,3
-                        do jc=1,3
-                           if (m.gt.i) then
-                              hess(ind(ic,m,jc,i))=hess(ind(ic,m,jc,i)) &
-                                 +gij*sm(ic)*si(jc)
-                           else
-                              hess(ind(ic,i,jc,m))=hess(ind(ic,i,jc,m)) &
-                                 +gij*si(ic)*sm(jc)
-                           end if
-                           if (m.gt.j) then
-                              hess(ind(ic,m,jc,j))=hess(ind(ic,m,jc,j)) &
-                                 +gij*sm(ic)*sj(jc)
-                           else
-                              hess(ind(ic,j,jc,m))=hess(ind(ic,j,jc,m)) &
-                                 +gij*sj(ic)*sm(jc)
-                           end if
-                           if (i.gt.j) then
-                              hess(ind(ic,i,jc,j))=hess(ind(ic,i,jc,j)) &
-                                 +gij*si(ic)*sj(jc)
-                           else
-                              hess(ind(ic,j,jc,i))=hess(ind(ic,j,jc,i)) &
-                                 +gij*sj(ic)*si(jc)
-                           end if
-                        end do
-                     end do
-                     do ic=1,3
-                        do jc=1,ic
-                           hess(ind(ic,i,jc,i))=hess(ind(ic,i,jc,i)) &
-                              +gij*si(ic)*si(jc)
-                           hess(ind(ic,m,jc,m))=hess(ind(ic,m,jc,m)) &
-                              +gij*sm(ic)*sm(jc)
-                           hess(ind(ic,j,jc,j))=hess(ind(ic,j,jc,j)) &
-                              +gij*sj(ic)*sj(jc)
-                        end do
-                     end do
-                  end do
-               end if
-            end if
+             if ((rmj.gt.rzero).and.(rmi.gt.rzero)) then
+                sinphi=rl/(rmj*rmi)
+                ! none linear case
+                if (sinphi.gt.rzero) then
+                   ! shared Wilson B row for non-linear angle (i-m-j)
+                   bmat9 = bmat_angle(xyz(:,i)-xyz(:,m), xyz(:,j)-xyz(:,m))
+                   call bmat_accum_packed(n, hess, [i, m, j], bmat9, gij)
+                else
+                   ! linear case: shared Wilson B rows for linear bend (two rows)
+                   bmat29 = bmat_linbend(xyz(:,i)-xyz(:,m), xyz(:,j)-xyz(:,m))
+                   do ii=1,2
+                      call bmat_accum_packed(n, hess, [i, m, j], bmat29(ii, :), gij)
+                   end do
+                end if
+             end if
 
-         end do bend_jAt
-      end do bend_iAt
+          end do bend_jAt
+       end do bend_iAt
    end do bend_mAt
 
 end subroutine mh_swart_bend
@@ -424,7 +352,7 @@ pure subroutine mh_swart_torsion(n,at,xyz,hess,kt,kd,rcov,rvdw,lcutoff)
    real(wp),intent(in)    :: rvdw(:)
    logical, intent(in)    :: lcutoff(n,n)
 
-   integer  :: i,j,k,l,ic,jc,ij,kl
+   integer  :: i,j,k,l,ij,kl
 !  allow only angles in the range of 35-145
    real(wp),parameter :: a35 = (35.0d0/180.d0)* pi
    real(wp),parameter :: cosfi_max=cos(a35)
@@ -434,7 +362,7 @@ pure subroutine mh_swart_torsion(n,at,xyz,hess,kt,kd,rcov,rvdw,lcutoff)
    real(wp) :: rkl(3),rkl0,akl,rkl2,d0kl,gkl
    real(wp) :: cosfi2,cosfi3,cosfi4
    real(wp) :: beta,tij
-   real(wp) :: si(3),sj(3),sk(3),sl(3)
+   real(wp) :: brow12(12)
 
 !! ------------------------------------------------------------------------
 !  Hessian for torsion
@@ -496,40 +424,16 @@ pure subroutine mh_swart_torsion(n,at,xyz,hess,kt,kd,rcov,rvdw,lcutoff)
 
                tij = kt * gij*gjk*gkl
 
-               !tij = max(tij,10*min_fk)
+                !tij = max(tij,10*min_fk)
 
-               c = bmat_torsion(txyz)
-               si = c(:,1)
-               sj = c(:,2)
-               sk = c(:,3)
-               sl = c(:,4)
+                c = bmat_torsion(txyz)
+                brow12 = [c(:,1), c(:,2), c(:,3), c(:,4)]
+                call bmat_accum_packed(n, hess, [i, j, k, l], brow12, tij)
 
-               ! off diagonal block
-               do ic=1,3
-                  do jc=1,3
-                     hess(ind(ic,i,jc,j))=hess(ind(ic,i,jc,j))+tij*si(ic) * sj(jc)
-                     hess(ind(ic,i,jc,k))=hess(ind(ic,i,jc,k))+tij*si(ic) * sk(jc)
-                     hess(ind(ic,i,jc,l))=hess(ind(ic,i,jc,l))+tij*si(ic) * sl(jc)
-                     hess(ind(ic,j,jc,k))=hess(ind(ic,j,jc,k))+tij*sj(ic) * sk(jc)
-                     hess(ind(ic,j,jc,l))=hess(ind(ic,j,jc,l))+tij*sj(ic) * sl(jc)
-                     hess(ind(ic,k,jc,l))=hess(ind(ic,k,jc,l))+tij*sk(ic) * sl(jc)
-                  end do
-               end do
-
-               ! diagonal block
-               do ic=1,3
-                  do jc=1,ic
-                     hess(ind(ic,i,jc,i))=hess(ind(ic,i,jc,i))+tij*si(ic) * si(jc)
-                     hess(ind(ic,j,jc,j))=hess(ind(ic,j,jc,j))+tij*sj(ic) * sj(jc)
-                     hess(ind(ic,k,jc,k))=hess(ind(ic,k,jc,k))+tij*sk(ic) * sk(jc)
-                     hess(ind(ic,l,jc,l))=hess(ind(ic,l,jc,l))+tij*sl(ic) * sl(jc)
-                  end do
-               end do
-
-            end do torsion_lAt
-         end do torsion_iAt
-      end do torsion_kAt
-   end do torsion_jAt
+             end do torsion_lAt
+          end do torsion_iAt
+       end do torsion_kAt
+    end do torsion_jAt
 
 end subroutine mh_swart_torsion
 
@@ -548,14 +452,14 @@ pure subroutine mh_swart_outofp(n,at,xyz,hess,ko,kd,rcov,rvdw,lcutoff)
    real(wp),intent(in)    :: rvdw(:)
    logical, intent(in)    :: lcutoff(n,n)
 
-   integer  :: i,ir,j,jr,k,kr,l,lr,ic,jc
+   integer  :: i,ir,j,jr,k,kr,l,lr
    real(wp) :: txyz(3,4),c(3,4)
    real(wp) :: rij(3),rij0,d0ij,rij2,gij
    real(wp) :: rik(3),rik0,d0ik,rik2,gik
    real(wp) :: ril(3),ril0,d0il,ril2,gil
    real(wp) :: cosfi2,cosfi3,cosfi4
    real(wp) :: beta,tij,tau
-   real(wp) :: si(3),sj(3),sk(3),sl(3)
+   real(wp) :: brow12(12)
 
 !! ------------------------------------------------------------------------
 !  Hessian for out-of-plane
@@ -615,41 +519,17 @@ pure subroutine mh_swart_outofp(n,at,xyz,hess,ko,kd,rcov,rvdw,lcutoff)
 
                !tij = max(tij,10*min_fk)
 
-               tau = oop_angle(txyz)
-               If (abs(tau).gt.45.0d0*(pi/180.d0)) cycle
+                tau = oop_angle(txyz)
+                If (abs(tau).gt.45.0d0*(pi/180.d0)) cycle
 
-               c = bmat_outofplane(txyz)
-               si = c(:,4)
-               sj = c(:,1)
-               sk = c(:,2)
-               sl = c(:,3)
-
-               ! off diagonal block
-               do ic=1,3
-                  do jc=1,3
-                     hess(ind(ic,i,jc,j))=hess(ind(ic,i,jc,j))+tij*si(ic) * sj(jc)
-                     hess(ind(ic,i,jc,k))=hess(ind(ic,i,jc,k))+tij*si(ic) * sk(jc)
-                     hess(ind(ic,i,jc,l))=hess(ind(ic,i,jc,l))+tij*si(ic) * sl(jc)
-                     hess(ind(ic,j,jc,k))=hess(ind(ic,j,jc,k))+tij*sj(ic) * sk(jc)
-                     hess(ind(ic,j,jc,l))=hess(ind(ic,j,jc,l))+tij*sj(ic) * sl(jc)
-                     hess(ind(ic,k,jc,l))=hess(ind(ic,k,jc,l))+tij*sk(ic) * sl(jc)
-                  end do
-               end do
-
-               ! diagonal block
-               do ic=1,3
-                  do jc=1,ic
-                     hess(ind(ic,i,jc,i))=hess(ind(ic,i,jc,i))+tij*si(ic) * si(jc)
-                     hess(ind(ic,j,jc,j))=hess(ind(ic,j,jc,j))+tij*sj(ic) * sj(jc)
-                     hess(ind(ic,k,jc,k))=hess(ind(ic,k,jc,k))+tij*sk(ic) * sk(jc)
-                     hess(ind(ic,l,jc,l))=hess(ind(ic,l,jc,l))+tij*sl(ic) * sl(jc)
-                  end do
-               end do
+                c = bmat_outofplane(txyz)
+                brow12 = [c(:,4), c(:,1), c(:,2), c(:,3)]
+                call bmat_accum_packed(n, hess, [i, j, k, l], brow12, tij)
 
             enddo outofplane_lAt
-         enddo outofplane_kAt
-      enddo outofplane_jAt
-   enddo outofplane_iAt
+          enddo outofplane_kAt
+       enddo outofplane_jAt
+    enddo outofplane_iAt
 
 end subroutine mh_swart_outofp
 

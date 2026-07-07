@@ -23,6 +23,7 @@ module xtb_bmatrix
    private
    public :: bmat_bond, bmat_angle, bmat_linbend, &
       & bmat_torsion, bmat_outofplane, oop_angle
+   public :: bmat_accum_packed, bmat_accum_dense
 
    character(len=*), parameter :: source = 'xtb_bmatrix'
 
@@ -358,5 +359,83 @@ pure function bmat_bend(xyz) result(bf)
       bf(i, 2) = -(bf(i, 1)+bf(i, 3))
    end do
 end function bmat_bend
+
+!> Accumulate scale * B^T B into a packed lower-triangular Cartesian Hessian.
+!>
+!> Layout:
+!>   nat    - number of atoms in the full molecule
+!>   hess   - packed array of length (3*nat)*(3*nat+1)/2
+!>   atoms  - fragment atom indices (1-based global), size nfrag
+!>   brow   - flattened Wilson B row, length 3*nfrag, ordered as
+!>            [a1_x, a1_y, a1_z, a2_x, a2_y, a2_z, ...]
+!>   scale  - scalar force constant multiplying the outer product
+!>
+!> Only lower-packed entries with global Cartesian j <= i are updated.
+!> Caller is responsible for ensuring atoms are unique and brow has the
+!> expected length; this routine does no validation.
+pure subroutine bmat_accum_packed(nat, hess, atoms, brow, scale)
+   integer, intent(in) :: nat
+   real(wp), intent(inout) :: hess((3*nat)*(3*nat+1)/2)
+   integer, intent(in) :: atoms(:)
+   real(wp), intent(in) :: brow(:)
+   real(wp), intent(in) :: scale
+
+   integer :: nfrag, p, q, cp, cq, gi, gj, imax, imin
+   real(wp) :: val
+
+   nfrag = size(atoms)
+   do p = 1, nfrag
+      do cp = 1, 3
+         gi = (atoms(p)-1)*3 + cp
+         do q = 1, nfrag
+            do cq = 1, 3
+               gj = (atoms(q)-1)*3 + cq
+               if (gj > gi) cycle
+               val = scale * brow((p-1)*3+cp) * brow((q-1)*3+cq)
+               imax = gi
+               imin = gj
+               hess(imax*(imax-1)/2 + imin) = hess(imax*(imax-1)/2 + imin) + val
+            end do
+         end do
+      end do
+   end do
+end subroutine bmat_accum_packed
+
+!> Accumulate scale * B^T B into a dense Cartesian Hessian.
+!>
+!> Layout:
+!>   hess   - dense (3*nat) x (3*nat) array
+!>   atoms  - fragment atom indices (1-based global), size nfrag
+!>   brow   - flattened Wilson B row, length 3*nfrag, ordered as
+!>            [a1_x, a1_y, a1_z, a2_x, a2_y, a2_z, ...]
+!>   scale  - scalar force constant multiplying the outer product
+!>
+!> Updates both (i,j) and (j,i) entries. Caller is responsible for
+!> ensuring atoms are unique and brow has the expected length; this
+!> routine does no validation. Thread-safe when caller passes a
+!> thread-local Hessian.
+pure subroutine bmat_accum_dense(hess, atoms, brow, scale)
+   real(wp), intent(inout) :: hess(:, :)
+   integer, intent(in) :: atoms(:)
+   real(wp), intent(in) :: brow(:)
+   real(wp), intent(in) :: scale
+
+   integer :: nfrag, p, q, cp, cq, gi, gj
+   real(wp) :: val
+
+   nfrag = size(atoms)
+   do p = 1, nfrag
+      do cp = 1, 3
+         gi = (atoms(p)-1)*3 + cp
+         do q = 1, nfrag
+            do cq = 1, 3
+               gj = (atoms(q)-1)*3 + cq
+               val = scale * brow((p-1)*3+cp) * brow((q-1)*3+cq)
+               hess(gi, gj) = hess(gi, gj) + val
+            end do
+         end do
+      end do
+   end do
+end subroutine bmat_accum_dense
 
 end module xtb_bmatrix
