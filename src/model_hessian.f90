@@ -36,6 +36,11 @@ module xtb_modelhessian
    public :: mh_swart
    private
 
+   interface mh_swart
+      module procedure :: mh_swart_packed
+      module procedure :: mh_swart_unpacked
+   end interface mh_swart
+
 !  van-der-Waals radii used in the D2 model
    real(wp),parameter :: vander(86) = aatoau * (/ &
      0.91_wp,0.92_wp, & ! H, He
@@ -98,7 +103,7 @@ contains
 !  is not implemented in atomic units and requires some magical conversion
 !  factor somewhere hidden in the implementation below.
 !! ------------------------------------------------------------------------
-subroutine mh_swart(xyz,n,hess,at,modh)
+subroutine mh_swart_packed(xyz,n,hess,at,modh)
    use xtb_mctc_constants
    use xtb_mctc_convert
    use xtb_mctc_param, only: rad => covalent_radius_2009
@@ -140,7 +145,44 @@ subroutine mh_swart(xyz,n,hess,at,modh)
       call mh_eeq(n,at,xyz,0.0_wp,chrgeq,modh%kq,hess)
    endif
 
-end subroutine mh_swart
+end subroutine mh_swart_packed
+
+!> Dense symmetric 3N x 3N Swart model Hessian.
+!> Wraps mh_swart_packed and unpacks the lower-triangular packed
+!> (column-major, index i*(i-1)/2+j for element (j,i), j<=i) result
+!> into a full symmetric matrix for consumers needing dense storage
+!> (e.g. O1NumHess).
+subroutine mh_swart_unpacked(xyz,n,hess,at,modh)
+   use xtb_type_setvar
+   implicit none
+
+   integer, intent(in)  :: n
+   real(wp),intent(in)  :: xyz(3,n)
+   real(wp),intent(out) :: hess(3*n,3*n)
+   integer, intent(in)  :: at(n)
+   type(modhess_setvar),intent(in) :: modh
+
+   integer  :: i, n3
+   real(wp), allocatable :: hpack(:)
+   logical, allocatable :: mask(:,:)
+
+   n3 = 3*n
+   allocate(hpack(n3*(n3+1)/2), mask(n3,n3))
+   mask = .false.
+   do i = 1, n3
+      mask(1:i, i) = .true.
+   end do
+
+   call mh_swart_packed(xyz,n,hpack,at,modh)
+
+   hess = 0.0_wp
+   hess = unpack(hpack, mask, field=0.0_wp)
+   do i = 2, n3
+      hess(i, 1:i-1) = hess(1:i-1, i)
+   end do
+
+   deallocate(hpack, mask)
+end subroutine mh_swart_unpacked
 
 pure subroutine mh_swart_stretch(n,at,xyz,hess,kr,kd,s6,rcov,rvdw,lcutoff,rcut)
    use xtb_mctc_constants
