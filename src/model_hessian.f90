@@ -2026,7 +2026,7 @@ end module xtb_modelhessian
             c6k=c6(iANr(katom))
             c6l=c6(iANr(latom))
             c66=sqrt(c6k*c6l)
-            Rv=(vander(iANr(katom))+vander(iANr(latom)))/0.52917721
+            Rv=(vander(iANr(katom))+vander(iANr(latom)))/bohr
 
             call getvdwxx(xkl, ykl, zkl, c66, s6, Rv, vdw(1,1))
             call getvdwxy(xkl, ykl, zkl, c66, s6, Rv, vdw(1,2))
