@@ -1227,7 +1227,9 @@ end subroutine prdispl
 !> generate model Hessian
 subroutine modhes(env, calc, modh, natoms, xyz, chg, Hess, pr)
    use xtb_type_setvar
-   use xtb_modelhessian
+   use xtb_modelhessian_gff, only : mh_gff
+   use xtb_modelhessian_lindh, only : mh_lindh, mh_lindh_d2
+   use xtb_modelhessian_swart, only : mh_swart
    use xtb_setparam
    use xtb_type_calculator
    use xtb_gfnff_calculator
@@ -1270,8 +1272,8 @@ subroutine modhes(env, calc, modh, natoms, xyz, chg, Hess, pr)
          call env%error("internal error in model hessian!", source)
          return
       case(p_modh_old)
-        if (pr) write(env%unit,'(a)') "Using Lindh-Hessian (1995)"
-        call ddvopt(xyz, natoms, Hess, chg, modh%s6)
+         if (pr) write(env%unit,'(a)') "Using Lindh-Hessian (1995)"
+         call mh_lindh_d2(xyz, natoms, Hess, chg, modh)
       case(p_modh_lindh_d2)
         if (pr) write(env%unit,'(a)') "Using Lindh-Hessian"
         call mh_lindh_d2(xyz, natoms, Hess, chg, modh)
@@ -1289,7 +1291,7 @@ subroutine modhes(env, calc, modh, natoms, xyz, chg, Hess, pr)
          return
       case(p_modh_old, p_modh_gff)
          if (pr) write(env%unit,'(a)') "Using GFN-FF Lindh-Hessian"
-         call gff_ddvopt(xyz, natoms, Hess, chg, modh%s6, calc%param, calc%topo, calc%neigh)
+         call mh_gff(xyz, natoms, Hess, chg, modh%s6, calc%param, calc%topo, calc%neigh)
       case(p_modh_lindh_d2)
         if (pr) write(env%unit,'(a)') "Using Lindh-Hessian"
         call mh_lindh_d2(xyz, natoms, Hess, chg, modh)

@@ -15,14 +15,12 @@
 ! You should have received a copy of the GNU Lesser General Public License
 ! along with xtb.  If not, see <https://www.gnu.org/licenses/>.
 
-!> Phase 1 behavior-lock tests for model Hessian variants.
-!> Captures current output of mh_lindh_d2, mh_lindh, mh_swart, and ddvopt
-!> before any refactoring.
+!> Behavior-lock tests for model Hessian variants.
 !>
 !> Reference data lives in `test/unit/fixtures/model_hessian/*.dat` as one
-!> packed Hessian value per line. On first run or with GEN_REFS=1, the tests
-!> write the files from the current code output and PASS. On later
-!> runs they compare element-wise against the stored references.
+!> packed Hessian value per line. With GEN_REFS=1, the tests write files from
+!> current code output and PASS. Otherwise they compare element-wise against
+!> stored references.
 !>
 !> Tests may encode current buggy behavior (rkl2=sum(rjk**2) in torsion,
 !> outofp2(xyz,...) in out-of-plane) — marked as behavior-lock until
@@ -31,7 +29,8 @@ module test_model_hessian
    use testdrive, only : new_unittest, unittest_type, error_type, check
    use xtb_mctc_accuracy, only : wp
    use xtb_type_molecule, only : TMolecule
-   use xtb_modelhessian, only : mh_lindh, mh_lindh_d2, mh_swart
+   use xtb_modelhessian_lindh, only : mh_lindh, mh_lindh_d2
+   use xtb_modelhessian_swart, only : mh_swart
    use xtb_type_setvar, only : modhess_setvar
    use xtb_o1numhess, only : swart
    use xtb_test_molstock, only : getMolecule
@@ -45,17 +44,6 @@ module test_model_hessian
    integer, parameter :: VAR_SWART    = 3
 
    real(wp), parameter :: thr = 10*epsilon(0.0_wp)
-
-   interface
-      subroutine ddvopt(Cart, nAtoms, Hess, iANr, s6)
-         import :: wp
-         integer, intent(in) :: nAtoms
-         real(wp), intent(in) :: Cart(3, nAtoms)
-         real(wp), intent(out) :: Hess((3*nAtoms)*(3*nAtoms+1)/2)
-         integer, intent(in) :: iANr(nAtoms)
-         real(wp), intent(in) :: s6
-      end subroutine ddvopt
-   end interface
 
 contains
 
@@ -84,11 +72,7 @@ subroutine collect_model_hessian(testsuite)
       ! Out-of-plane behavior (ko != 0)
       new_unittest("lindh_d2_caffeine_oop", test_lindh_d2_caffeine_oop), &
       new_unittest("lindh_caffeine_oop", test_lindh_caffeine_oop), &
-      new_unittest("swart_caffeine_oop", test_swart_caffeine_oop), &
-      ! ddvopt vs mh_lindh_d2 parity
-      new_unittest("ddvopt_vs_lindh_d2_h2o", test_ddvopt_vs_lindh_d2_h2o), &
-      new_unittest("ddvopt_vs_lindh_d2_mindless01", test_ddvopt_vs_lindh_d2_mindless01), &
-      new_unittest("ddvopt_vs_lindh_d2_caffeine", test_ddvopt_vs_lindh_d2_caffeine) &
+      new_unittest("swart_caffeine_oop", test_swart_caffeine_oop) &
       ]
 
 end subroutine collect_model_hessian
@@ -125,34 +109,6 @@ subroutine test_mh(error, molname, variant, modh, label)
    call compute_mh_packed(mol, variant, modh, hess_packed)
    call compare_or_write_ref(error, label, hess_packed)
 end subroutine test_mh
-
-!> ddvopt vs mh_lindh_d2 parity test driver.
-subroutine test_ddvopt_parity(error, molname, label)
-   type(error_type), allocatable, intent(out) :: error
-   character(len=*), intent(in) :: molname
-   character(len=*), intent(in) :: label
-
-   type(TMolecule) :: mol
-   integer :: n, n3
-   real(wp), allocatable :: hess_ddvopt(:), hess_lindh(:)
-   real(wp) :: max_diff
-   call getMolecule(mol, molname)
-
-   n = mol%n
-   n3 = 3 * n
-   allocate(hess_ddvopt(n3*(n3+1)/2), hess_lindh(n3*(n3+1)/2))
-   hess_ddvopt = 0.0_wp
-   hess_lindh = 0.0_wp
-   call ddvopt(mol%xyz, n, hess_ddvopt, mol%at, 20.0_wp)
-   call mh_lindh_d2(mol%xyz, n, hess_lindh, mol%at, default_modh())
-   max_diff = maxval(abs(hess_ddvopt - hess_lindh))
-   call compare_or_write_ref(error, label // "_ddvopt", hess_ddvopt)
-   if (allocated(error)) return
-   call compare_or_write_ref(error, label // "_lindh_d2", hess_lindh)
-   if (allocated(error)) return
-   call check(error, max_diff, 0.0_wp, thr=thr)
-end subroutine test_ddvopt_parity
-
 
 !> Compute model Hessian, return packed array
 subroutine compute_mh_packed(mol, variant, modh, hess_packed)
@@ -253,9 +209,8 @@ end function read_ref
 
 
 !> Compare packed Hessian against stored reference.
-!> If GEN_REFS=1 or file missing, writes reference from current output.
-!> On mismatch, prints current and reference matrices side-by-side
-!> (same style as test_hessian.f90).
+!> If GEN_REFS=1, writes reference from current output.
+!> On mismatch, reports the first differing packed element.
 subroutine compare_or_write_ref(error, label, packed)
    type(error_type), allocatable, intent(out) :: error
    character(len=*), intent(in) :: label
@@ -273,7 +228,7 @@ subroutine compare_or_write_ref(error, label, packed)
    end if
    ok = read_ref(path, ref)
    if (.not. ok) then
-      call write_ref(path, packed)
+      call check(error, ok)
       return
    end if
    if (size(ref) /= size(packed)) then
@@ -360,21 +315,6 @@ end subroutine
 subroutine test_swart_caffeine_oop(error)
    type(error_type), allocatable, intent(out) :: error
    call test_mh(error, "caffeine", VAR_SWART, oop_modh(), "swart_caffeine_oop")
-end subroutine
-
-subroutine test_ddvopt_vs_lindh_d2_h2o(error)
-   type(error_type), allocatable, intent(out) :: error
-   call test_ddvopt_parity(error, "h2o", "h2o")
-end subroutine
-
-subroutine test_ddvopt_vs_lindh_d2_mindless01(error)
-   type(error_type), allocatable, intent(out) :: error
-   call test_ddvopt_parity(error, "mindless01", "mindless01")
-end subroutine
-
-subroutine test_ddvopt_vs_lindh_d2_caffeine(error)
-   type(error_type), allocatable, intent(out) :: error
-   call test_ddvopt_parity(error, "caffeine", "caffeine")
 end subroutine
 
 !> Modified Swart (O1NumHess variant) on H2O against hardcoded reference.
