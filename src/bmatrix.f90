@@ -23,7 +23,7 @@ module xtb_bmatrix
    private
    public :: bmat_bond, bmat_angle, bmat_linbend, &
       & bmat_torsion, bmat_outofplane, oop_angle
-   public :: bmat_accum_packed, bmat_accum_dense
+   public :: bmat_accum_packed, bmat_accum_dense, bmat_accum_pairblock_packed
 
    character(len=*), parameter :: source = 'xtb_bmatrix'
 
@@ -437,5 +437,43 @@ pure subroutine bmat_accum_dense(hess, atoms, brow, scale)
       end do
    end do
 end subroutine bmat_accum_dense
+
+!> Accumulate a 2-atom Cartesian second-derivative block into a packed
+!> lower-triangular Hessian.  Given a symmetric 3x3 block 'mat', stamps:
+!>   (i,i) -= mat, (j,j) -= mat, (i,j) += mat
+!> matching the sign pattern of a pair second derivative where moving
+!> either atom in the same direction cancels and moving them apart adds.
+pure subroutine bmat_accum_pairblock_packed(nat, hess, i, j, mat)
+   integer, intent(in) :: nat
+   real(wp), intent(inout) :: hess((3*nat)*(3*nat+1)/2)
+   integer, intent(in) :: i, j
+   real(wp), intent(in) :: mat(3,3)
+
+   integer :: ic, jc, gi, gj, imax, imin
+
+   do ic = 1, 3
+      do jc = 1, ic
+         gi = (i-1)*3 + ic
+         gj = (i-1)*3 + jc
+         imax = gi
+         imin = gj
+         hess(imax*(imax-1)/2 + imin) = hess(imax*(imax-1)/2 + imin) - mat(ic,jc)
+         gi = (j-1)*3 + ic
+         gj = (j-1)*3 + jc
+         imax = gi
+         imin = gj
+         hess(imax*(imax-1)/2 + imin) = hess(imax*(imax-1)/2 + imin) - mat(ic,jc)
+      end do
+   end do
+   do ic = 1, 3
+      do jc = 1, 3
+         gi = (i-1)*3 + ic
+         gj = (j-1)*3 + jc
+         imax = max(gi, gj)
+         imin = min(gi, gj)
+         hess(imax*(imax-1)/2 + imin) = hess(imax*(imax-1)/2 + imin) + mat(ic,jc)
+      end do
+   end do
+end subroutine bmat_accum_pairblock_packed
 
 end module xtb_bmatrix

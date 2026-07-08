@@ -27,8 +27,8 @@ module xtb_modelhessian
    use xtb_mctc_accuracy, only : wp
    use xtb_mctc_convert
    use xtb_chargemodel
-   use xtb_bmatrix, only : bmat_angle, bmat_linbend, bmat_torsion, &
-      & bmat_outofplane, oop_angle, bmat_accum_packed
+   use xtb_bmatrix, only : bmat_bond, bmat_angle, bmat_linbend, bmat_torsion, &
+      & bmat_outofplane, oop_angle, bmat_accum_packed, bmat_accum_pairblock_packed
    implicit none
 
    public :: mh_lindh
@@ -161,11 +161,11 @@ pure subroutine mh_swart_stretch(n,at,xyz,hess,kr,kd,s6,rcov,rvdw,lcutoff,rcut)
    real(wp),intent(in)    :: rcut
 
    integer  :: i,j
-   real(wp) :: xij,yij,zij,rij2,r0,d0
+   real(wp) :: rij(3), rij2, r0, d0
    real(wp) :: gmm
    real(wp) :: c6i,c6j,c6ij,rv
-   real(wp) :: hxx,hxy,hxz,hyy,hyz,hzz
    real(wp) :: vdw(3,3)
+   real(wp) :: bmat6(6)
 
 !! ------------------------------------------------------------------------
 !  Hessian for stretch
@@ -178,25 +178,18 @@ pure subroutine mh_swart_stretch(n,at,xyz,hess,kr,kd,s6,rcov,rvdw,lcutoff,rcut)
          lcutoff(i,j) = rcutoff(xyz,i,j,rcut)
          lcutoff(j,i) = lcutoff(i,j)
 
-         xij=xyz(1,i)-xyz(1,j)
-         yij=xyz(2,i)-xyz(2,j)
-         zij=xyz(3,i)-xyz(3,j)
-         rij2 = xij**2 + yij**2 + zij**2
+         rij = xyz(:,i) - xyz(:,j)
+         rij2 = dot_product(rij, rij)
          r0 = rcov(at(i))+rcov(at(j))
          d0 = rvdw(at(i))+rvdw(at(j))
 
          !cccccc vdwx ccccccccccccccccccccccccccccccccc
-         c6i=c6(at(i))
-         c6j=c6(at(j))
-         c6ij=sqrt(c6i*c6j)
-         rv=(vander(at(i))+vander(at(j)))
+         c6i = c6(at(i))
+         c6j = c6(at(j))
+         c6ij = sqrt(c6i*c6j)
+         rv = vander(at(i)) + vander(at(j))
 
-         call getvdwxx(xij, yij, zij, c6ij, s6, rv, vdw(1,1))
-         call getvdwxy(xij, yij, zij, c6ij, s6, rv, vdw(1,2))
-         call getvdwxy(xij, zij, yij, c6ij, s6, rv, vdw(1,3))
-         call getvdwxx(yij, xij, zij, c6ij, s6, rv, vdw(2,2))
-         call getvdwxy(yij, zij, xij, c6ij, s6, rv, vdw(2,3))
-         call getvdwxx(zij, xij, yij, c6ij, s6, rv, vdw(3,3))
+         call getvdw_hess(rij, c6ij, s6, rv, vdw)
          !cccccc ende vdwx ccccccccccccccccccccccccccccccc
 
          gmm = kr*fk_swart(1.0_wp,  r0,rij2) &
@@ -204,37 +197,12 @@ pure subroutine mh_swart_stretch(n,at,xyz,hess,kr,kd,s6,rcov,rvdw,lcutoff,rcut)
 
          !gmm = max(gmm,min_fk)
 
-         hxx=gmm*xij*xij/rij2-vdw(1,1)
-         hxy=gmm*xij*yij/rij2-vdw(1,2)
-         hxz=gmm*xij*zij/rij2-vdw(1,3)
-         hyy=gmm*yij*yij/rij2-vdw(2,2)
-         hyz=gmm*yij*zij/rij2-vdw(2,3)
-         hzz=gmm*zij*zij/rij2-vdw(3,3)
+         ! pure stretch: gmm * B^T B
+         bmat6 = bmat_bond(rij)
+         call bmat_accum_packed(n, hess, [i, j], bmat6, gmm)
 
-         ! save diagonal elements for atom i
-         hess(ind(1,i,1,i))=hess(ind(1,i,1,i))+hxx
-         hess(ind(2,i,1,i))=hess(ind(2,i,1,i))+hxy
-         hess(ind(2,i,2,i))=hess(ind(2,i,2,i))+hyy
-         hess(ind(3,i,1,i))=hess(ind(3,i,1,i))+hxz
-         hess(ind(3,i,2,i))=hess(ind(3,i,2,i))+hyz
-         hess(ind(3,i,3,i))=hess(ind(3,i,3,i))+hzz
-         ! save elements between atom i and atom j
-         hess(ind(1,i,1,j))=hess(ind(1,i,1,j))-hxx
-         hess(ind(1,i,2,j))=hess(ind(1,i,2,j))-hxy
-         hess(ind(1,i,3,j))=hess(ind(1,i,3,j))-hxz
-         hess(ind(2,i,1,j))=hess(ind(2,i,1,j))-hxy
-         hess(ind(2,i,2,j))=hess(ind(2,i,2,j))-hyy
-         hess(ind(2,i,3,j))=hess(ind(2,i,3,j))-hyz
-         hess(ind(3,i,1,j))=hess(ind(3,i,1,j))-hxz
-         hess(ind(3,i,2,j))=hess(ind(3,i,2,j))-hyz
-         hess(ind(3,i,3,j))=hess(ind(3,i,3,j))-hzz
-         ! save diagonal elements for atom j
-         hess(ind(1,j,1,j))=hess(ind(1,j,1,j))+hxx
-         hess(ind(2,j,1,j))=hess(ind(2,j,1,j))+hxy
-         hess(ind(2,j,2,j))=hess(ind(2,j,2,j))+hyy
-         hess(ind(3,j,1,j))=hess(ind(3,j,1,j))+hxz
-         hess(ind(3,j,2,j))=hess(ind(3,j,2,j))+hyz
-         hess(ind(3,j,3,j))=hess(ind(3,j,3,j))+hzz
+         ! D2 dispersion Cartesian second derivative
+         call bmat_accum_pairblock_packed(n, hess, i, j, vdw)
 
       end do stretch_jAt
    end do stretch_iAt
@@ -258,9 +226,9 @@ pure subroutine mh_swart_bend(n,at,xyz,hess,kf,kd,rcov,rvdw,lcutoff)
 
    integer  :: i,j,m,ii
    real(wp),parameter :: rzero = 1.0e-10_wp
-   real(wp) :: xmi,ymi,zmi,rmi2,rmi,r0mi,d0mj,gmi
-   real(wp) :: xmj,ymj,zmj,rmj2,rmj,r0mj,d0mi,gmj
-   real(wp) :: test,gij,rl2,rl
+   real(wp) :: vec_mi(3), vec_mj(3), rmi2, rmi, r0mi, d0mi, gmi
+   real(wp) :: rmj2, rmj, r0mj, d0mj, gmj
+   real(wp) :: test, gij, rl2, rl, crv(3)
    real(wp) :: sinphi
    real(wp) :: bmat9(9), bmat29(2,9)
 
@@ -270,69 +238,67 @@ pure subroutine mh_swart_bend(n,at,xyz,hess,kf,kd,rcov,rvdw,lcutoff)
    bend_mAt: do m = 1, n
       bend_iAt: do i = 1, n
          if (i.eq.m) cycle bend_iAt
-         if(lcutoff(i,m)) cycle bend_iAt
+         if (lcutoff(i,m)) cycle bend_iAt
 
-         xmi=(xyz(1,i)-xyz(1,m))
-         ymi=(xyz(2,i)-xyz(2,m))
-         zmi=(xyz(3,i)-xyz(3,m))
-         rmi2 = xmi**2 + ymi**2 + zmi**2
-         rmi=sqrt(rmi2)
-         r0mi=rcov(at(m))+rcov(at(i))
-         d0mi=rvdw(at(m))+rvdw(at(i))
+         vec_mi = xyz(:,i) - xyz(:,m)
+         rmi2 = dot_product(vec_mi, vec_mi)
+         rmi = sqrt(rmi2)
+         r0mi = rcov(at(m)) + rcov(at(i))
+         d0mi = rvdw(at(m)) + rvdw(at(i))
 
          bend_jAt: do j = 1, i-1
             if (j.eq.m) cycle bend_jAt
-            if(lcutoff(j,i)) cycle bend_jAt
-            if(lcutoff(j,m)) cycle bend_jAt
+            if (lcutoff(j,i)) cycle bend_jAt
+            if (lcutoff(j,m)) cycle bend_jAt
 
-            xmj=(xyz(1,j)-xyz(1,m))
-            ymj=(xyz(2,j)-xyz(2,m))
-            zmj=(xyz(3,j)-xyz(3,m))
-            rmj2 = xmj**2 + ymj**2 + zmj**2
-            rmj=sqrt(rmj2)
-            r0mj=rcov(at(m))+rcov(at(j))
-            d0mj=rvdw(at(m))+rvdw(at(j))
+            vec_mj = xyz(:,j) - xyz(:,m)
+            rmj2 = dot_product(vec_mj, vec_mj)
+            rmj = sqrt(rmj2)
+            r0mj = rcov(at(m)) + rcov(at(j))
+            d0mj = rvdw(at(m)) + rvdw(at(j))
 
             ! test if zero angle
-            test=xmi*xmj+ymi*ymj+zmi*zmj
-            test=test/(rmi*rmj)
-            if (abs(test-1.0_wp).lt.1.0e-12_wp) cycle bend_jAt
+            test = dot_product(vec_mi, vec_mj) / (rmi * rmj)
+            if (abs(test - 1.0_wp) < 1.0e-12_wp) cycle bend_jAt
 
-            gmi = fk_swart(1.0_wp,r0mi,rmi2) &
-                + 0.5_wp*kd * fk_vdw(5.0_wp,d0mi,rmi2)
-            gmj = fk_swart(1.0_wp,r0mj,rmj2) &
-                + 0.5_wp*kd * fk_vdw(5.0_wp,d0mj,rmj2)
+            gmi = fk_swart(1.0_wp, r0mi, rmi2) &
+               + 0.5_wp*kd * fk_vdw(5.0_wp, d0mi, rmi2)
+            gmj = fk_swart(1.0_wp, r0mj, rmj2) &
+               + 0.5_wp*kd * fk_vdw(5.0_wp, d0mj, rmj2)
 
-            gij = kf*gmi*gmj
+            gij = kf * gmi * gmj
 
-            rl2=(ymi*zmj-zmi*ymj)**2+(zmi*xmj-xmi*zmj)**2+(xmi*ymj-ymi*xmj)**2
+            crv(1) = vec_mi(2)*vec_mj(3) - vec_mi(3)*vec_mj(2)
+            crv(2) = vec_mi(3)*vec_mj(1) - vec_mi(1)*vec_mj(3)
+            crv(3) = vec_mi(1)*vec_mj(2) - vec_mi(2)*vec_mj(1)
+            rl2 = dot_product(crv, crv)
 
-            if(rl2.lt.1.e-14_wp) then
-               rl=0.0_wp
+            if (rl2 < 1.0e-14_wp) then
+               rl = 0.0_wp
             else
-               rl=sqrt(rl2)
+               rl = sqrt(rl2)
             end if
 
             !gij = max(gij,min_fk)
 
-             if ((rmj.gt.rzero).and.(rmi.gt.rzero)) then
-                sinphi=rl/(rmj*rmi)
-                ! none linear case
-                if (sinphi.gt.rzero) then
-                   ! shared Wilson B row for non-linear angle (i-m-j)
-                   bmat9 = bmat_angle(xyz(:,i)-xyz(:,m), xyz(:,j)-xyz(:,m))
-                   call bmat_accum_packed(n, hess, [i, m, j], bmat9, gij)
-                else
-                   ! linear case: shared Wilson B rows for linear bend (two rows)
-                   bmat29 = bmat_linbend(xyz(:,i)-xyz(:,m), xyz(:,j)-xyz(:,m))
-                   do ii=1,2
-                      call bmat_accum_packed(n, hess, [i, m, j], bmat29(ii, :), gij)
-                   end do
-                end if
-             end if
+            if ((rmj > rzero) .and. (rmi > rzero)) then
+               sinphi = rl / (rmj * rmi)
+               ! none linear case
+               if (sinphi > rzero) then
+                  ! shared Wilson B row for non-linear angle (i-m-j)
+                  bmat9 = bmat_angle(vec_mi, vec_mj)
+                  call bmat_accum_packed(n, hess, [i, m, j], bmat9, gij)
+               else
+                  ! linear case: shared Wilson B rows for linear bend (two rows)
+                  bmat29 = bmat_linbend(vec_mi, vec_mj)
+                  do ii = 1, 2
+                     call bmat_accum_packed(n, hess, [i, m, j], bmat29(ii, :), gij)
+                  end do
+               end if
+            end if
 
-          end do bend_jAt
-       end do bend_iAt
+         end do bend_jAt
+      end do bend_iAt
    end do bend_mAt
 
 end subroutine mh_swart_bend
@@ -406,9 +372,9 @@ pure subroutine mh_swart_torsion(n,at,xyz,hess,kt,kd,rcov,rvdw,lcutoff)
                d0kl=rvdw(at(k))+rvdw(at(l))
                rkl0=rcov(at(k))+rcov(at(l))
 
-               rij2=sum(rij**2)
-               rjk2=sum(rjk**2)
-               rkl2=sum(rkl**2)
+               rij2=dot_product(rij,rij)
+               rjk2=dot_product(rjk,rjk)
+               rkl2=dot_product(rkl,rkl)
 
                cosfi2=dot_product(rij,rjk)/sqrt(rij2*rjk2)
                if (abs(cosfi2).gt.cosfi_max) cycle
@@ -497,9 +463,9 @@ pure subroutine mh_swart_outofp(n,at,xyz,hess,ko,kd,rcov,rvdw,lcutoff)
                ril0=rcov(at(i))+rcov(at(l))
                d0il=rvdw(at(i))+rvdw(at(l))
 
-               rij2=sum(rij**2)
-               rik2=sum(rik**2)
-               ril2=sum(ril**2)
+               rij2=dot_product(rij,rij)
+               rik2=dot_product(rik,rik)
+               ril2=dot_product(ril,ril)
 
                cosfi2=dot_product(rij,rik)/sqrt(rij2*rik2)
                if (abs(abs(cosfi2)-1.0_wp).lt.1.0e-1_wp) cycle
@@ -715,11 +681,11 @@ pure subroutine mh_lindh_stretch(n,at,xyz,hess,kr,kd,s6,aav,rav,dav,lcutoff,rcut
    real(wp),intent(in)    :: rcut
 
    integer  :: i,ir,j,jr
-   real(wp) :: xij,yij,zij,rij2,r0,d0
+   real(wp) :: vec(3), rij2, r0, d0
    real(wp) :: alpha,gmm
    real(wp) :: c6i,c6j,c6ij,rv
-   real(wp) :: hxx,hxy,hxz,hyy,hyz,hzz
    real(wp) :: vdw(3,3)
+   real(wp) :: bmat6(6)
 
 !! ------------------------------------------------------------------------
 !  Hessian for stretch
@@ -734,10 +700,8 @@ pure subroutine mh_lindh_stretch(n,at,xyz,hess,kr,kd,s6,aav,rav,dav,lcutoff,rcut
          lcutoff(i,j) = rcutoff(xyz,i,j,rcut)
          lcutoff(j,i) = lcutoff(i,j)
 
-         xij=xyz(1,i)-xyz(1,j)
-         yij=xyz(2,i)-xyz(2,j)
-         zij=xyz(3,i)-xyz(3,j)
-         rij2 = xij**2 + yij**2 + zij**2
+         vec = xyz(:,i) - xyz(:,j)
+         rij2 = dot_product(vec, vec)
          r0 = rav(ir,jr)
          d0 = dav(ir,jr)
          alpha=aav(ir,jr)
@@ -748,12 +712,7 @@ pure subroutine mh_lindh_stretch(n,at,xyz,hess,kr,kd,s6,aav,rav,dav,lcutoff,rcut
          c6ij=sqrt(c6i*c6j)
          rv=(vander(at(i))+vander(at(j)))
 
-         call getvdwxx(xij, yij, zij, c6ij, s6, rv, vdw(1,1))
-         call getvdwxy(xij, yij, zij, c6ij, s6, rv, vdw(1,2))
-         call getvdwxy(xij, zij, yij, c6ij, s6, rv, vdw(1,3))
-         call getvdwxx(yij, xij, zij, c6ij, s6, rv, vdw(2,2))
-         call getvdwxy(yij, zij, xij, c6ij, s6, rv, vdw(2,3))
-         call getvdwxx(zij, xij, yij, c6ij, s6, rv, vdw(3,3))
+         call getvdw_hess(vec, c6ij, s6, rv, vdw)
          !cccccc ende vdwx ccccccccccccccccccccccccccccccc
 
          gmm = kr*fk_lindh(alpha,r0,rij2) &
@@ -761,37 +720,12 @@ pure subroutine mh_lindh_stretch(n,at,xyz,hess,kr,kd,s6,aav,rav,dav,lcutoff,rcut
 
          !gmm = max(gmm,min_fk)
 
-         hxx=gmm*xij*xij/rij2-vdw(1,1)
-         hxy=gmm*xij*yij/rij2-vdw(1,2)
-         hxz=gmm*xij*zij/rij2-vdw(1,3)
-         hyy=gmm*yij*yij/rij2-vdw(2,2)
-         hyz=gmm*yij*zij/rij2-vdw(2,3)
-         hzz=gmm*zij*zij/rij2-vdw(3,3)
+         ! pure stretch: gmm * B^T B
+         bmat6 = bmat_bond(vec)
+         call bmat_accum_packed(n, hess, [i, j], bmat6, gmm)
 
-         ! save diagonal elements for atom i
-         hess(ind(1,i,1,i))=hess(ind(1,i,1,i))+hxx
-         hess(ind(2,i,1,i))=hess(ind(2,i,1,i))+hxy
-         hess(ind(2,i,2,i))=hess(ind(2,i,2,i))+hyy
-         hess(ind(3,i,1,i))=hess(ind(3,i,1,i))+hxz
-         hess(ind(3,i,2,i))=hess(ind(3,i,2,i))+hyz
-         hess(ind(3,i,3,i))=hess(ind(3,i,3,i))+hzz
-         ! save elements between atom i and atom j
-         hess(ind(1,i,1,j))=hess(ind(1,i,1,j))-hxx
-         hess(ind(1,i,2,j))=hess(ind(1,i,2,j))-hxy
-         hess(ind(1,i,3,j))=hess(ind(1,i,3,j))-hxz
-         hess(ind(2,i,1,j))=hess(ind(2,i,1,j))-hxy
-         hess(ind(2,i,2,j))=hess(ind(2,i,2,j))-hyy
-         hess(ind(2,i,3,j))=hess(ind(2,i,3,j))-hyz
-         hess(ind(3,i,1,j))=hess(ind(3,i,1,j))-hxz
-         hess(ind(3,i,2,j))=hess(ind(3,i,2,j))-hyz
-         hess(ind(3,i,3,j))=hess(ind(3,i,3,j))-hzz
-         ! save diagonal elements for atom j
-         hess(ind(1,j,1,j))=hess(ind(1,j,1,j))+hxx
-         hess(ind(2,j,1,j))=hess(ind(2,j,1,j))+hxy
-         hess(ind(2,j,2,j))=hess(ind(2,j,2,j))+hyy
-         hess(ind(3,j,1,j))=hess(ind(3,j,1,j))+hxz
-         hess(ind(3,j,2,j))=hess(ind(3,j,2,j))+hyz
-         hess(ind(3,j,3,j))=hess(ind(3,j,3,j))+hzz
+         ! D2 dispersion Cartesian second derivative
+         call bmat_accum_pairblock_packed(n, hess, i, j, vdw)
 
       end do stretch_jAt
    end do stretch_iAt
@@ -1088,9 +1022,9 @@ subroutine mh_lindh_torsion(n,at,xyz,hess,kt,kd,aav,rav,dav,lcutoff)
                rkl0=rav(kr,lr)
                akl =aav(kr,lr)
 
-               rij2=sum(rij**2)
-               rjk2=sum(rjk**2)
-               rkl2=sum(rkl**2)
+               rij2=dot_product(rij,rij)
+               rjk2=dot_product(rjk,rjk)
+               rkl2=dot_product(rkl,rkl)
 
                cosfi2=dot_product(rij,rjk)/sqrt(rij2*rjk2)
                if (abs(cosfi2).gt.cosfi_max) cycle
@@ -1213,9 +1147,9 @@ pure subroutine mh_lindh_outofp(n,at,xyz,hess,ko,kd,aav,rav,dav,lcutoff)
                ril0=rav(ir,lr)
                ail =aav(ir,lr)
 
-               rij2=sum(rij**2)
-               rik2=sum(rik**2)
-               ril2=sum(ril**2)
+               rij2=dot_product(rij,rij)
+               rik2=dot_product(rik,rik)
+               ril2=dot_product(ril,ril)
 
                cosfi2=dot_product(rij,rik)/sqrt(rij2*rik2)
                if (abs(abs(cosfi2)-1.0_wp).lt.1.0e-1_wp) cycle
@@ -1593,6 +1527,23 @@ pure elemental subroutine getvdwxx(rx, ry, rz, c66, s6, r0, vdw)
       t29 + t1 * t33 * t25 * t44 * t2 * t15
    vdw=t62
 end subroutine getvdwxx
+
+!> Unified D2 dispersion Hessian block for a pair.
+pure subroutine getvdw_hess(vec, c66, s6, r0, vdw)
+   real(wp), intent(in) :: vec(3)
+   real(wp), intent(in) :: c66, s6, r0
+   real(wp), intent(out) :: vdw(3,3)
+
+   call getvdwxx(vec(1), vec(2), vec(3), c66, s6, r0, vdw(1,1))
+   call getvdwxy(vec(1), vec(2), vec(3), c66, s6, r0, vdw(1,2))
+   call getvdwxy(vec(1), vec(3), vec(2), c66, s6, r0, vdw(1,3))
+   call getvdwxx(vec(2), vec(1), vec(3), c66, s6, r0, vdw(2,2))
+   call getvdwxy(vec(2), vec(3), vec(1), c66, s6, r0, vdw(2,3))
+   call getvdwxx(vec(3), vec(1), vec(2), c66, s6, r0, vdw(3,3))
+   vdw(2,1) = vdw(1,2)
+   vdw(3,1) = vdw(1,3)
+   vdw(3,2) = vdw(2,3)
+end subroutine getvdw_hess
 
 pure elemental function fk_lindh(alpha,r0,r2) result(gmm)
    implicit none
