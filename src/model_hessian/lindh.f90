@@ -26,17 +26,112 @@
 
 module xtb_modelhessian_lindh
    use xtb_mctc_accuracy, only : wp
+   use xtb_mctc_constants
+   use xtb_mctc_convert
    use xtb_chargemodel, only : new_charge_model_2019
    use xtb_bmatrix, only : bmat_bond, bmat_accum_packed, bmat_accum_pairblock_packed
-   use xtb_modelhessian_eeq, only : c6, vander, itabrow, rcutoff, ind, outofp2, &
-      & getvdw_hess, fk_lindh, fk_vdw, mh_eeq
+   use xtb_modelhessian_type, only : TModelHessian
+   use xtb_modelhessian_eeq, only : c6, vander, itabrow, rcutoff, outofp2, &
+      & getvdw_hess, fk_lindh, fk_vdw, add_eeq_hessian
+   use xtb_type_param, only : chrg_parameter
    implicit none
 
-   public :: mh_lindh
-   public :: mh_lindh_d2
    private
 
+   type :: TLindhParameters
+      real(wp) :: rav(3, 3)
+      real(wp) :: aav(3, 3)
+      real(wp) :: dav(3, 3)
+      real(wp) :: outofplane_dispersion
+   end type TLindhParameters
+
+   type(TLindhParameters), parameter :: lindh_d2_parameters = TLindhParameters( &
+      rav=reshape([ &
+         1.3500_wp, 2.1000_wp, 2.5300_wp, &
+         2.1000_wp, 2.8700_wp, 3.4000_wp, &
+         2.5300_wp, 3.4000_wp, 3.4000_wp], [3, 3]), &
+      aav=reshape([ &
+         1.0000_wp, 0.3949_wp, 0.3949_wp, &
+         0.3949_wp, 0.2800_wp, 0.2800_wp, &
+         0.3949_wp, 0.2800_wp, 0.2800_wp], [3, 3]), &
+      dav=reshape([ &
+         0.0000_wp, 0.0000_wp, 0.0000_wp, &
+         0.0000_wp, 0.0000_wp, 0.0000_wp, &
+         0.0000_wp, 0.0000_wp, 0.0000_wp], [3, 3]), &
+      outofplane_dispersion=1.0_wp)
+
+   type(TLindhParameters), parameter :: lindh_parameters = TLindhParameters( &
+      rav=reshape([ &
+         1.3500_wp, 2.1000_wp, 2.5300_wp, &
+         2.1000_wp, 2.8700_wp, 3.8000_wp, &
+         2.5300_wp, 3.8000_wp, 4.5000_wp], [3, 3]), &
+      aav=reshape([ &
+         1.0000_wp, 0.3949_wp, 0.3949_wp, &
+         0.3949_wp, 0.2800_wp, 0.1200_wp, &
+         0.3949_wp, 0.1200_wp, 0.0600_wp], [3, 3]), &
+      dav=reshape([ &
+         0.0000_wp, 3.6000_wp, 3.6000_wp, &
+         3.6000_wp, 5.3000_wp, 5.3000_wp, &
+         3.6000_wp, 5.3000_wp, 5.3000_wp], [3, 3]), &
+      outofplane_dispersion=0.0_wp)
+
+   type, abstract, extends(TModelHessian) :: TLindhModelHessianBase
+   contains
+      procedure :: stretch
+      procedure :: bend
+      procedure :: torsion
+      procedure :: outofplane
+      procedure :: add_charge
+      procedure(lindh_parameter_provider), deferred, private :: get_parameters
+   end type TLindhModelHessianBase
+
+   type, public, extends(TLindhModelHessianBase) :: TLindhModelHessian
+   contains
+      procedure, private :: get_parameters => get_lindh_parameters
+   end type TLindhModelHessian
+
+   type, public, extends(TLindhModelHessianBase) :: TLindhD2ModelHessian
+   contains
+      procedure, private :: get_parameters => get_lindh_d2_parameters
+   end type TLindhD2ModelHessian
+
+   abstract interface
+      pure function lindh_parameter_provider(self) result(parameters)
+         import :: TLindhModelHessianBase, TLindhParameters
+         class(TLindhModelHessianBase), intent(in) :: self
+         type(TLindhParameters) :: parameters
+      end function lindh_parameter_provider
+   end interface
+
 contains
+
+pure function get_lindh_parameters(self) result(parameters)
+   class(TLindhModelHessian), intent(in) :: self
+   type(TLindhParameters) :: parameters
+
+   parameters = lindh_parameters
+end function get_lindh_parameters
+
+pure function get_lindh_d2_parameters(self) result(parameters)
+   class(TLindhD2ModelHessian), intent(in) :: self
+   type(TLindhParameters) :: parameters
+
+   parameters = lindh_d2_parameters
+end function get_lindh_d2_parameters
+
+subroutine add_charge(self, xyz, n, hess, at, kq)
+   class(TLindhModelHessianBase), intent(in) :: self
+   integer, intent(in) :: n
+   real(wp), intent(in) :: xyz(3, n)
+   real(wp), intent(inout) :: hess((3*n)*(3*n+1)/2)
+   integer, intent(in) :: at(n)
+   real(wp), intent(in) :: kq
+
+   type(chrg_parameter) :: chrgeq
+
+   call new_charge_model_2019(chrgeq, n, at)
+   call add_eeq_hessian(n, at, xyz, 0.0_wp, chrgeq, kq, hess)
+end subroutine add_charge
 
 !! ========================================================================
 !  Lindh's Model Hessian augmented with D2
@@ -64,61 +159,6 @@ contains
 !  is not implemented in atomic units and requires some magical conversion
 !  factor somewhere hidden in the implementation below.
 !! ------------------------------------------------------------------------
-subroutine mh_lindh_d2(xyz,n,hess,at,modh)
-   use xtb_mctc_constants
-   use xtb_mctc_convert
-
-   use xtb_type_setvar
-   use xtb_type_param
-
-   implicit none
-
-   integer, intent(in)  :: n
-   real(wp),intent(in)  :: xyz(3,n)
-   real(wp),intent(out) :: hess((3*n)*(3*n+1)/2)
-   integer, intent(in)  :: at(n)
-   type(modhess_setvar),intent(in) :: modh
-
-   real(wp),parameter :: rAv(3,3) = reshape( &
-     (/1.3500_wp,2.1000_wp,2.5300_wp, &
-       2.1000_wp,2.8700_wp,3.4000_wp, &
-       2.5300_wp,3.4000_wp,3.4000_wp/), shape(rAv) )
-   real(wp),parameter :: aAv(3,3) = reshape ( &
-     (/1.0000_wp,0.3949_wp,0.3949_wp, &
-       0.3949_wp,0.2800_wp,0.2800_wp, &
-       0.3949_wp,0.2800_wp,0.2800_wp/), shape(aAv) )
-   real(wp),parameter :: dAv(3,3) = reshape ( &
-     (/0.0000_wp,0.0000_wp,0.0000_wp, &
-       0.0000_wp,0.0000_wp,0.0000_wp, &
-       0.0000_wp,0.0000_wp,0.0000_wp/), shape(aAv) )
-
-   integer  :: n3
-   real(wp) :: kd
-   logical, allocatable :: lcutoff(:,:)
-   type(chrg_parameter) :: chrgeq
-
-   allocate( lcutoff(n,n), source=.false.)
-
-   n3=3*n
-   hess = 0.0d0
-
-!  the dispersion force constant is used relative to the stretch force constant
-   kd = modh%kd/modh%kr
-
-   call mh_lindh_stretch(n,at,xyz,hess,modh%kr,kd,modh%s6,aav,rav,dav,lcutoff,modh%rcut)
-   if (modh%kf.ne.0.0_wp) &
-   call mh_lindh_bend   (n,at,xyz,hess,modh%kf,kd,        aav,rav,dav,lcutoff)
-   if (modh%kt.ne.0.0_wp) &
-   call mh_lindh_torsion(n,at,xyz,hess,modh%kt,kd,        aav,rav,dav,lcutoff)
-   if (modh%ko.ne.0.0_wp) &
-   call mh_lindh_outofp (n,at,xyz,hess,modh%ko,kd,        aav,rav,dav,lcutoff)
-   if (modh%kq.ne.0.0_wp) then
-      call new_charge_model_2019(chrgeq,n,at)
-      call mh_eeq(n,at,xyz,0.0_wp,chrgeq,modh%kq,hess)
-   endif
-
-end subroutine mh_lindh_d2
-
 !! ========================================================================
 !  Lindh's Model Hessian updated around 2007
 !! ------------------------------------------------------------------------
@@ -145,67 +185,8 @@ end subroutine mh_lindh_d2
 !    3    3.6000   5.3000   5.3000
 !
 !! ------------------------------------------------------------------------
-subroutine mh_lindh(xyz,n,hess,at,modh)
-   use xtb_mctc_constants
-   use xtb_mctc_convert
-
-   use xtb_type_setvar
-   use xtb_type_param
-
-   implicit none
-
-   integer, intent(in)  :: n
-   real(wp),intent(in)  :: xyz(3,n)
-   real(wp),intent(out) :: hess((3*n)*(3*n+1)/2)
-   integer, intent(in)  :: at(n)
-   type(modhess_setvar),intent(in) :: modh
-
-   real(wp),parameter :: rAv(3,3) = reshape( &
-     (/1.3500_wp,2.1000_wp,2.5300_wp, &
-       2.1000_wp,2.8700_wp,3.8000_wp, &
-       2.5300_wp,3.8000_wp,4.5000_wp/), shape(rAv) )
-   real(wp),parameter :: aAv(3,3) = reshape ( &
-     (/1.0000_wp,0.3949_wp,0.3949_wp, &
-       0.3949_wp,0.2800_wp,0.1200_wp, &
-       0.3949_wp,0.1200_wp,0.0600_wp/), shape(aAv) )
-   real(wp),parameter :: dAv(3,3) = reshape ( &
-     (/0.0000_wp,3.6000_wp,3.6000_wp, &
-       3.6000_wp,5.3000_wp,5.3000_wp, &
-       3.6000_wp,5.3000_wp,5.3000_wp/), shape(aAv) )
-
-   integer  :: n3
-   real(wp) :: kd
-   logical, allocatable :: lcutoff(:,:)
-   type(chrg_parameter) :: chrgeq
-
-   allocate( lcutoff(n,n), source=.false.)
-
-   n3=3*n
-   hess = 0.0d0
-
-!  the dispersion force constant is used relative to the stretch force constant
-   kd = modh%kd/modh%kr
-
-   call mh_lindh_stretch(n,at,xyz,hess,modh%kr,kd,modh%s6,aav,rav,dav,lcutoff,modh%rcut)
-   if (modh%kf.ne.0.0_wp) &
-   call mh_lindh_bend   (n,at,xyz,hess,modh%kf,kd,        aav,rav,dav,lcutoff)
-   if (modh%kt.ne.0.0_wp) &
-   call mh_lindh_torsion(n,at,xyz,hess,modh%kt,kd,        aav,rav,dav,lcutoff)
-   if (modh%ko.ne.0.0_wp) &
-   call mh_lindh_outofp (n,at,xyz,hess,modh%ko,0.0_wp,    aav,rav,dav,lcutoff)
-   if (modh%kq.ne.0.0_wp) then
-      call new_charge_model_2019(chrgeq,n,at)
-      call mh_eeq(n,at,xyz,0.0_wp,chrgeq,modh%kq,hess)
-   endif
-
-end subroutine mh_lindh
-
-pure subroutine mh_lindh_stretch(n,at,xyz,hess,kr,kd,s6,aav,rav,dav,lcutoff,rcut)
-   use xtb_mctc_constants
-   use xtb_mctc_convert
-
-   implicit none
-
+pure subroutine stretch(self, xyz, n, hess, at, kr, kd, s6, lcutoff, rcut)
+   class(TLindhModelHessianBase), intent(in) :: self
    integer, intent(in)    :: n
    integer, intent(in)    :: at(n)
    real(wp),intent(in)    :: xyz(3,n)
@@ -213,18 +194,22 @@ pure subroutine mh_lindh_stretch(n,at,xyz,hess,kr,kd,s6,aav,rav,dav,lcutoff,rcut
    real(wp),intent(in)    :: kr
    real(wp),intent(in)    :: kd
    real(wp),intent(in)    :: s6
-   real(wp),intent(in)    :: aav(3,3)
-   real(wp),intent(in)    :: rav(3,3)
-   real(wp),intent(in)    :: dav(3,3)
-   logical, intent(out)   :: lcutoff(n,n)
+   logical, intent(inout) :: lcutoff(n,n)
    real(wp),intent(in)    :: rcut
 
    integer  :: i,ir,j,jr
+   type(TLindhParameters) :: parameters
+   real(wp) :: aav(3,3), rav(3,3), dav(3,3)
    real(wp) :: vec(3), rij2, r0, d0
    real(wp) :: alpha,gmm
    real(wp) :: c6i,c6j,c6ij,rv
    real(wp) :: vdw(3,3)
    real(wp) :: bmat6(6)
+
+   parameters = self%get_parameters()
+   aav = parameters%aav
+   rav = parameters%rav
+   dav = parameters%dav
 
 !! ------------------------------------------------------------------------
 !  Hessian for stretch
@@ -269,25 +254,21 @@ pure subroutine mh_lindh_stretch(n,at,xyz,hess,kr,kd,s6,aav,rav,dav,lcutoff,rcut
       end do stretch_jAt
    end do stretch_iAt
 
-end subroutine mh_lindh_stretch
+end subroutine stretch
 
-pure subroutine mh_lindh_bend(n,at,xyz,hess,kf,kd,aav,rav,dav,lcutoff)
-   use xtb_mctc_constants
-
-   implicit none
-
+pure subroutine bend(self, xyz, n, hess, at, force_constant, kd, lcutoff)
+   class(TLindhModelHessianBase), intent(in) :: self
    integer, intent(in)    :: n
    integer, intent(in)    :: at(n)
    real(wp),intent(in)    :: xyz(3,n)
    real(wp),intent(inout) :: hess((3*n)*(3*n+1)/2)
-   real(wp),intent(in)    :: kf
+   real(wp),intent(in)    :: force_constant
    real(wp),intent(in)    :: kd
-   real(wp),intent(in)    :: aav(3,3)
-   real(wp),intent(in)    :: rav(3,3)
-   real(wp),intent(in)    :: dav(3,3)
    logical, intent(in)    :: lcutoff(n,n)
 
-   integer  :: i,ir,j,jr,m,mr,ic,jc,ii
+   integer  :: i,ir,j,jr,m,mr,ii
+   type(TLindhParameters) :: parameters
+   real(wp) :: aav(3,3), rav(3,3), dav(3,3)
    real(wp),parameter :: rzero = 1.0e-10_wp
    real(wp) :: xij,yij,zij,rij2,rrij,r1
    real(wp) :: xmi,ymi,zmi,rmi2,rmi,r0mi,ami,d0mj,gmi
@@ -296,6 +277,12 @@ pure subroutine mh_lindh_bend(n,at,xyz,hess,kf,kd,aav,rav,dav,lcutoff)
    real(wp) :: sinphi,cosphi,costhetax,costhetay,costhetaz
    real(wp) :: alpha
    real(wp) :: si(3),sj(3),sm(3),x(2),y(2),z(2)
+   real(wp) :: bmat9(9)
+
+   parameters = self%get_parameters()
+   aav = parameters%aav
+   rav = parameters%rav
+   dav = parameters%dav
 
 !! ------------------------------------------------------------------------
 !  Hessian for bending
@@ -347,7 +334,7 @@ pure subroutine mh_lindh_bend(n,at,xyz,hess,kf,kd,aav,rav,dav,lcutoff)
             gmj = fk_lindh(amj,r0mj,rmj2) &
                 + 0.5_wp*kd * fk_vdw(4.0_wp,d0mj,rmj2)
 
-            gij = kf*gmi*gmj
+            gij = force_constant*gmi*gmj
 
             rl2=(ymi*zmj-zmi*ymj)**2+(zmi*xmj-xmi*zmj)**2+(xmi*ymj-ymi*xmj)**2
 
@@ -371,42 +358,12 @@ pure subroutine mh_lindh_bend(n,at,xyz,hess,kf,kd,aav,rav,dav,lcutoff)
                   sj(1)=(cosphi*xmj/rmj-xmi/rmi)/(rmj*sinphi)
                   sj(2)=(cosphi*ymj/rmj-ymi/rmi)/(rmj*sinphi)
                   sj(3)=(cosphi*zmj/rmj-zmi/rmi)/(rmj*sinphi)
-                  sm(1)=-si(1)-sj(1)
-                  sm(2)=-si(2)-sj(2)
-                  sm(3)=-si(3)-sj(3)
-                  do ic=1,3
-                     do jc=1,3
-                        if (m.gt.i) then
-                           hess(ind(ic,m,jc,i))=hess(ind(ic,m,jc,i)) &
-                              +gij*sm(ic)*si(jc)
-                        else
-                           hess(ind(ic,i,jc,m))=hess(ind(ic,i,jc,m)) &
-                              +gij*si(ic)*sm(jc)
-                        end if
-                        if (m.gt.j) then
-                           hess(ind(ic,m,jc,j))=hess(ind(ic,m,jc,j)) &
-                              +gij*sm(ic)*sj(jc)
-                        else
-                           hess(ind(ic,j,jc,m))=hess(ind(ic,j,jc,m)) &
-                              +gij*sj(ic)*sm(jc)
-                        end if
-                        if (i.gt.j) then
-                           hess(ind(ic,i,jc,j))=hess(ind(ic,i,jc,j)) &
-                              +gij*si(ic)*sj(jc)
-                        else
-                           hess(ind(ic,j,jc,i))=hess(ind(ic,j,jc,i)) &
-                              +gij*sj(ic)*si(jc)
-                        end if
-                     end do
-                  end do
-                  do ic=1,3
-                     do jc=1,ic
-                        hess(ind(ic,i,jc,i))=hess(ind(ic,i,jc,i))+gij*si(ic)*si(jc)
-                        hess(ind(ic,m,jc,m))=hess(ind(ic,m,jc,m))+gij*sm(ic)*sm(jc)
-                        hess(ind(ic,j,jc,j))=hess(ind(ic,j,jc,j))+gij*sj(ic)*sj(jc)
-                     end do
-                  end do
-               else
+                   sm(1)=-si(1)-sj(1)
+                   sm(2)=-si(2)-sj(2)
+                   sm(3)=-si(3)-sj(3)
+                   bmat9 = [si, sm, sj]
+                   call bmat_accum_packed(n, hess, [i, m, j], bmat9, gij)
+                else
                   ! linear case
                   if ((abs(ymi).gt.rzero).or.(abs(xmi).gt.rzero)) then
                      x(1)=-ymi
@@ -437,43 +394,9 @@ pure subroutine mh_lindh_bend(n,at,xyz,hess,kf,kd,aav,rav,dav,lcutoff)
                      sm(1)=-(si(1)+sj(1))
                      sm(2)=-(si(2)+sj(2))
                      sm(3)=-(si(3)+sj(3))
-                     !
-                     do ic=1,3
-                        do jc=1,3
-                           if (m.gt.i) then
-                              hess(ind(ic,m,jc,i))=hess(ind(ic,m,jc,i)) &
-                                 +gij*sm(ic)*si(jc)
-                           else
-                              hess(ind(ic,i,jc,m))=hess(ind(ic,i,jc,m)) &
-                                 +gij*si(ic)*sm(jc)
-                           end if
-                           if (m.gt.j) then
-                              hess(ind(ic,m,jc,j))=hess(ind(ic,m,jc,j)) &
-                                 +gij*sm(ic)*sj(jc)
-                           else
-                              hess(ind(ic,j,jc,m))=hess(ind(ic,j,jc,m)) &
-                                 +gij*sj(ic)*sm(jc)
-                           end if
-                           if (i.gt.j) then
-                              hess(ind(ic,i,jc,j))=hess(ind(ic,i,jc,j)) &
-                                 +gij*si(ic)*sj(jc)
-                           else
-                              hess(ind(ic,j,jc,i))=hess(ind(ic,j,jc,i)) &
-                                 +gij*sj(ic)*si(jc)
-                           end if
-                        end do
-                     end do
-                     do ic=1,3
-                        do jc=1,ic
-                           hess(ind(ic,i,jc,i))=hess(ind(ic,i,jc,i)) &
-                              +gij*si(ic)*si(jc)
-                           hess(ind(ic,m,jc,m))=hess(ind(ic,m,jc,m)) &
-                              +gij*sm(ic)*sm(jc)
-                           hess(ind(ic,j,jc,j))=hess(ind(ic,j,jc,j)) &
-                              +gij*sj(ic)*sj(jc)
-                        end do
-                     end do
-                  end do
+                     bmat9 = [si, sm, sj]
+                     call bmat_accum_packed(n, hess, [i, m, j], bmat9, gij)
+                   end do
 
                end if
             end if
@@ -482,25 +405,21 @@ pure subroutine mh_lindh_bend(n,at,xyz,hess,kf,kd,aav,rav,dav,lcutoff)
       end do bend_iAt
    end do bend_mAt
 
-end subroutine mh_lindh_bend
+end subroutine bend
 
-subroutine mh_lindh_torsion(n,at,xyz,hess,kt,kd,aav,rav,dav,lcutoff)
-   use xtb_mctc_constants
-
-   implicit none
-
+subroutine torsion(self, xyz, n, hess, at, force_constant, kd, lcutoff)
+   class(TLindhModelHessianBase), intent(in) :: self
    integer, intent(in)    :: n
    integer, intent(in)    :: at(n)
    real(wp),intent(in)    :: xyz(3,n)
    real(wp),intent(inout) :: hess((3*n)*(3*n+1)/2)
-   real(wp),intent(in)    :: kt
+   real(wp),intent(in)    :: force_constant
    real(wp),intent(in)    :: kd
-   real(wp),intent(in)    :: aav(3,3)
-   real(wp),intent(in)    :: rav(3,3)
-   real(wp),intent(in)    :: dav(3,3)
    logical, intent(in)    :: lcutoff(n,n)
 
-   integer  :: i,ir,j,jr,k,kr,l,lr,ic,jc,ij,kl
+   integer  :: i,ir,j,jr,k,kr,l,lr,ij,kl
+   type(TLindhParameters) :: parameters
+   real(wp) :: aav(3,3), rav(3,3), dav(3,3)
 !  allow only angles in the range of 35-145
    real(wp),parameter :: a35 = (35.0d0/180.d0)* pi
    real(wp),parameter :: cosfi_max=cos(a35)
@@ -511,6 +430,12 @@ subroutine mh_lindh_torsion(n,at,xyz,hess,kt,kd,aav,rav,dav,lcutoff)
    real(wp) :: cosfi2,cosfi3,cosfi4
    real(wp) :: beta,tij,tau,dum(3,4,3,4)
    real(wp) :: si(3),sj(3),sk(3),sl(3)
+   real(wp) :: brow12(12)
+
+   parameters = self%get_parameters()
+   aav = parameters%aav
+   rav = parameters%rav
+   dav = parameters%dav
 
 !! ------------------------------------------------------------------------
 !  Hessian for torsion
@@ -577,7 +502,7 @@ subroutine mh_lindh_torsion(n,at,xyz,hess,kt,kd,aav,rav,dav,lcutoff)
                gkl = fk_lindh(akl,rkl0,rkl2) &
                   + 0.5_wp*kd * fk_vdw(4.0_wp,d0kl,rkl2)
 
-               tij = kt * gij*gjk*gkl
+               tij = force_constant * gij*gjk*gkl
 
                !tij = max(tij,10*min_fk)
 
@@ -588,53 +513,29 @@ subroutine mh_lindh_torsion(n,at,xyz,hess,kt,kd,aav,rav,dav,lcutoff)
                sj = c(:,2)
                sk = c(:,3)
                sl = c(:,4)
-
-               ! off diagonal block
-               do ic=1,3
-                  do jc=1,3
-                     hess(ind(ic,i,jc,j))=hess(ind(ic,i,jc,j))+tij*si(ic) * sj(jc)
-                     hess(ind(ic,i,jc,k))=hess(ind(ic,i,jc,k))+tij*si(ic) * sk(jc)
-                     hess(ind(ic,i,jc,l))=hess(ind(ic,i,jc,l))+tij*si(ic) * sl(jc)
-                     hess(ind(ic,j,jc,k))=hess(ind(ic,j,jc,k))+tij*sj(ic) * sk(jc)
-                     hess(ind(ic,j,jc,l))=hess(ind(ic,j,jc,l))+tij*sj(ic) * sl(jc)
-                     hess(ind(ic,k,jc,l))=hess(ind(ic,k,jc,l))+tij*sk(ic) * sl(jc)
-                  end do
-               end do
-
-               ! diagonal block
-               do ic=1,3
-                  do jc=1,ic
-                     hess(ind(ic,i,jc,i))=hess(ind(ic,i,jc,i))+tij*si(ic) * si(jc)
-                     hess(ind(ic,j,jc,j))=hess(ind(ic,j,jc,j))+tij*sj(ic) * sj(jc)
-                     hess(ind(ic,k,jc,k))=hess(ind(ic,k,jc,k))+tij*sk(ic) * sk(jc)
-                     hess(ind(ic,l,jc,l))=hess(ind(ic,l,jc,l))+tij*sl(ic) * sl(jc)
-                  end do
-               end do
+               brow12 = [si, sj, sk, sl]
+               call bmat_accum_packed(n, hess, [i, j, k, l], brow12, tij)
 
             end do torsion_lAt
          end do torsion_iAt
       end do torsion_kAt
    end do torsion_jAt
 
-end subroutine mh_lindh_torsion
+end subroutine torsion
 
-pure subroutine mh_lindh_outofp(n,at,xyz,hess,ko,kd,aav,rav,dav,lcutoff)
-   use xtb_mctc_constants
-
-   implicit none
-
+pure subroutine outofplane(self, xyz, n, hess, at, force_constant, kd, lcutoff)
+   class(TLindhModelHessianBase), intent(in) :: self
    integer, intent(in)    :: n
    integer, intent(in)    :: at(n)
    real(wp),intent(in)    :: xyz(3,n)
    real(wp),intent(inout) :: hess((3*n)*(3*n+1)/2)
-   real(wp),intent(in)    :: ko
+   real(wp),intent(in)    :: force_constant
    real(wp),intent(in)    :: kd
-   real(wp),intent(in)    :: aav(3,3)
-   real(wp),intent(in)    :: rav(3,3)
-   real(wp),intent(in)    :: dav(3,3)
    logical, intent(in)    :: lcutoff(n,n)
 
-   integer  :: i,ir,j,jr,k,kr,l,lr,ic,jc
+   integer  :: i,ir,j,jr,k,kr,l,lr
+   type(TLindhParameters) :: parameters
+   real(wp) :: aav(3,3), rav(3,3), dav(3,3), outofplane_kd
    real(wp) :: txyz(3,4),c(3,4)
    real(wp) :: rij(3),rij0,aij,rij2,gij,d0ij
    real(wp) :: rik(3),rik0,aik,rik2,gik,d0ik
@@ -642,6 +543,13 @@ pure subroutine mh_lindh_outofp(n,at,xyz,hess,ko,kd,aav,rav,dav,lcutoff)
    real(wp) :: cosfi2,cosfi3,cosfi4
    real(wp) :: beta,tij,tau
    real(wp) :: si(3),sj(3),sk(3),sl(3)
+   real(wp) :: brow12(12)
+
+   parameters = self%get_parameters()
+   aav = parameters%aav
+   rav = parameters%rav
+   dav = parameters%dav
+   outofplane_kd = parameters%outofplane_dispersion*kd
 
 !! ------------------------------------------------------------------------
 !  Hessian for out-of-plane
@@ -698,13 +606,13 @@ pure subroutine mh_lindh_outofp(n,at,xyz,hess,ko,kd,aav,rav,dav,lcutoff)
                if (abs(abs(cosfi4)-1.0_wp).lt.1.0e-1_wp) cycle
 
                gij = fk_lindh(aij,rij0,rij2) &
-                  + 0.5_wp*kd * fk_vdw(4.0_wp,d0ij,rij2)
+                  + 0.5_wp*outofplane_kd * fk_vdw(4.0_wp,d0ij,rij2)
                gik = fk_lindh(aik,rik0,rik2) &
-                  + 0.5_wp*kd * fk_vdw(4.0_wp,d0ik,rik2)
+                  + 0.5_wp*outofplane_kd * fk_vdw(4.0_wp,d0ik,rik2)
                gil = fk_lindh(ail,ril0,ril2) &
-                  + 0.5_wp*kd * fk_vdw(4.0_wp,d0il,ril2)
+                  + 0.5_wp*outofplane_kd * fk_vdw(4.0_wp,d0il,ril2)
 
-               tij = ko * gij*gik*gil
+               tij = force_constant * gij*gik*gil
 
                !tij = max(tij,10*min_fk)
 
@@ -715,34 +623,14 @@ pure subroutine mh_lindh_outofp(n,at,xyz,hess,ko,kd,aav,rav,dav,lcutoff)
                sj = c(:,1)
                sk = c(:,2)
                sl = c(:,3)
-
-               ! off diagonal block
-               do ic=1,3
-                  do jc=1,3
-                     hess(ind(ic,i,jc,j))=hess(ind(ic,i,jc,j))+tij*si(ic) * sj(jc)
-                     hess(ind(ic,i,jc,k))=hess(ind(ic,i,jc,k))+tij*si(ic) * sk(jc)
-                     hess(ind(ic,i,jc,l))=hess(ind(ic,i,jc,l))+tij*si(ic) * sl(jc)
-                     hess(ind(ic,j,jc,k))=hess(ind(ic,j,jc,k))+tij*sj(ic) * sk(jc)
-                     hess(ind(ic,j,jc,l))=hess(ind(ic,j,jc,l))+tij*sj(ic) * sl(jc)
-                     hess(ind(ic,k,jc,l))=hess(ind(ic,k,jc,l))+tij*sk(ic) * sl(jc)
-                  end do
-               end do
-
-               ! diagonal block
-               do ic=1,3
-                  do jc=1,ic
-                     hess(ind(ic,i,jc,i))=hess(ind(ic,i,jc,i))+tij*si(ic) * si(jc)
-                     hess(ind(ic,j,jc,j))=hess(ind(ic,j,jc,j))+tij*sj(ic) * sj(jc)
-                     hess(ind(ic,k,jc,k))=hess(ind(ic,k,jc,k))+tij*sk(ic) * sk(jc)
-                     hess(ind(ic,l,jc,l))=hess(ind(ic,l,jc,l))+tij*sl(ic) * sl(jc)
-                  end do
-               end do
+               brow12 = [si, sj, sk, sl]
+               call bmat_accum_packed(n, hess, [i, j, k, l], brow12, tij)
 
             enddo outofplane_lAt
          enddo outofplane_kAt
       enddo outofplane_jAt
    enddo outofplane_iAt
 
-end subroutine mh_lindh_outofp
+end subroutine outofplane
 
 end module xtb_modelhessian_lindh

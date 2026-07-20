@@ -28,9 +28,13 @@
 module test_model_hessian
    use testdrive, only : new_unittest, unittest_type, error_type, check
    use xtb_mctc_accuracy, only : wp
+   use xtb_chargemodel, only : new_charge_model_2019
    use xtb_type_molecule, only : TMolecule
-   use xtb_modelhessian_lindh, only : mh_lindh, mh_lindh_d2
-   use xtb_modelhessian_swart, only : mh_swart
+   use xtb_modelhessian_eeq, only : add_eeq_hessian
+   use xtb_modelhessian_type, only : TModelHessian
+   use xtb_modelhessian_lindh, only : TLindhModelHessian, TLindhD2ModelHessian
+   use xtb_modelhessian_swart, only : TSwartModelHessian
+   use xtb_type_param, only : chrg_parameter
    use xtb_type_setvar, only : modhess_setvar
    use xtb_o1numhess, only : swart
    use xtb_test_molstock, only : getMolecule
@@ -67,6 +71,9 @@ subroutine collect_model_hessian(testsuite)
       new_unittest("swart_mindless01", test_swart_mindless01), &
       new_unittest("swart_caffeine", test_swart_caffeine), &
       new_unittest("swart_mgh2", test_swart_mgh2), &
+      new_unittest("model_hessian_dense", test_model_hessian_dense), &
+      new_unittest("model_hessian_charge", test_model_hessian_charge), &
+      new_unittest("eeq_addition", test_eeq_addition), &
       ! Modified Swart (O1NumHess variant), hardcoded H2O reference
       new_unittest("modified_swart_h2o", test_modified_swart_h2o), &
       ! Out-of-plane behavior (ko != 0)
@@ -118,19 +125,124 @@ subroutine compute_mh_packed(mol, variant, modh, hess_packed)
    real(wp), allocatable, intent(out) :: hess_packed(:)
 
    integer :: n3
+   class(TModelHessian), allocatable :: model_hessian
 
    n3 = 3 * mol%n
    allocate(hess_packed(n3*(n3+1)/2))
-   hess_packed = 0.0_wp
+   call new_model_hessian(variant, model_hessian)
+   call model_hessian%compute(mol%xyz, mol%n, hess_packed, mol%at, modh)
+end subroutine compute_mh_packed
+
+
+!> Allocate model Hessian implementation for a test variant.
+subroutine new_model_hessian(variant, model_hessian)
+   integer, intent(in) :: variant
+   class(TModelHessian), allocatable, intent(out) :: model_hessian
+
    select case(variant)
    case(VAR_LINDH_D2)
-      call mh_lindh_d2(mol%xyz, mol%n, hess_packed, mol%at, modh)
+      allocate(TLindhD2ModelHessian :: model_hessian)
    case(VAR_LINDH)
-      call mh_lindh(mol%xyz, mol%n, hess_packed, mol%at, modh)
+      allocate(TLindhModelHessian :: model_hessian)
    case(VAR_SWART)
-      call mh_swart(mol%xyz, mol%n, hess_packed, mol%at, modh)
+      allocate(TSwartModelHessian :: model_hessian)
    end select
-end subroutine compute_mh_packed
+end subroutine new_model_hessian
+
+
+!> Check packed and dense generic model Hessian interfaces are equivalent.
+subroutine test_model_hessian_dense(error)
+   type(error_type), allocatable, intent(out) :: error
+
+   type(TMolecule) :: mol
+   class(TModelHessian), allocatable :: model_hessian
+   integer :: i, j, ij, n3, variant
+   real(wp), allocatable :: hess_packed(:), hess_dense(:, :)
+
+   call getMolecule(mol, "h2o")
+   n3 = 3 * mol%n
+   allocate(hess_packed(n3*(n3+1)/2), hess_dense(n3, n3))
+
+   do variant = VAR_LINDH_D2, VAR_SWART
+      call new_model_hessian(variant, model_hessian)
+      call model_hessian%compute(mol%xyz, mol%n, hess_packed, mol%at, default_modh())
+      call model_hessian%compute(mol%xyz, mol%n, hess_dense, mol%at, default_modh())
+
+      ij = 0
+      do i = 1, n3
+         do j = 1, i
+            ij = ij + 1
+            call check(error, hess_dense(j, i), hess_packed(ij), thr=thr)
+            if (allocated(error)) return
+            call check(error, hess_dense(i, j), hess_packed(ij), thr=thr)
+            if (allocated(error)) return
+         end do
+      end do
+   end do
+end subroutine test_model_hessian_dense
+
+
+!> Check model implementations dispatch the additive charge contribution.
+subroutine test_model_hessian_charge(error)
+   type(error_type), allocatable, intent(out) :: error
+
+   type(TMolecule) :: mol
+   type(chrg_parameter) :: chrgeq
+   type(modhess_setvar) :: modh
+   class(TModelHessian), allocatable :: model_hessian
+   integer :: i, n3, variant
+   real(wp), allocatable :: base(:), charged(:), contribution(:)
+
+   call getMolecule(mol, "h2o")
+   call new_charge_model_2019(chrgeq, mol%n, mol%at)
+   n3 = 3 * mol%n
+   allocate(base(n3*(n3+1)/2), charged(n3*(n3+1)/2), &
+      & contribution(n3*(n3+1)/2))
+   contribution = 0.0_wp
+   call add_eeq_hessian(mol%n, mol%at, mol%xyz, 0.0_wp, chrgeq, 0.1_wp, contribution)
+
+   do variant = VAR_LINDH_D2, VAR_SWART
+      call new_model_hessian(variant, model_hessian)
+      modh = default_modh()
+      call model_hessian%compute(mol%xyz, mol%n, base, mol%at, modh)
+      modh%kq = 0.1_wp
+      call model_hessian%compute(mol%xyz, mol%n, charged, mol%at, modh)
+
+      do i = 1, size(base)
+         call check(error, charged(i), base(i) + contribution(i), &
+            & thr=100*epsilon(0.0_wp))
+         if (allocated(error)) return
+      end do
+   end do
+end subroutine test_model_hessian_charge
+
+
+!> Check EEQ utility adds to, rather than replaces, packed Hessian values.
+subroutine test_eeq_addition(error)
+   type(error_type), allocatable, intent(out) :: error
+
+   type(TMolecule) :: mol
+   type(chrg_parameter) :: chrgeq
+   integer :: i, n3
+   real(wp), allocatable :: contribution(:), shifted(:)
+
+   call getMolecule(mol, "h2o")
+   call new_charge_model_2019(chrgeq, mol%n, mol%at)
+   n3 = 3 * mol%n
+   allocate(contribution(n3*(n3+1)/2), shifted(n3*(n3+1)/2))
+   contribution = 0.0_wp
+   shifted = 1.0_wp
+
+   call add_eeq_hessian(mol%n, mol%at, mol%xyz, 0.0_wp, chrgeq, 0.1_wp, contribution)
+   call add_eeq_hessian(mol%n, mol%at, mol%xyz, 0.0_wp, chrgeq, 0.1_wp, shifted)
+
+   call check(error, any(abs(contribution) > epsilon(0.0_wp)))
+   if (allocated(error)) return
+   do i = 1, size(contribution)
+      call check(error, shifted(i), 1.0_wp + contribution(i), thr=100*epsilon(0.0_wp))
+      if (allocated(error)) return
+   end do
+end subroutine test_eeq_addition
 
 
 !> Path to reference file for a given label.

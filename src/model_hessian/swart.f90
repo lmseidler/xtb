@@ -26,20 +26,34 @@
 
 module xtb_modelhessian_swart
    use xtb_mctc_accuracy, only : wp
+   use xtb_mctc_constants
+   use xtb_mctc_convert
+   use xtb_mctc_param, only : covalent_radius_2009
    use xtb_chargemodel, only : new_charge_model_2019
    use xtb_bmatrix, only : bmat_bond, bmat_angle, bmat_linbend, bmat_torsion, &
       & bmat_outofplane, oop_angle, bmat_accum_packed, bmat_accum_pairblock_packed
+   use xtb_modelhessian_type, only : TModelHessian
    use xtb_modelhessian_eeq, only : c6, vander, rcutoff, getvdw_hess, &
-      & fk_swart, fk_vdw, mh_eeq
+      & fk_swart, fk_vdw, add_eeq_hessian
+   use xtb_type_param, only : chrg_parameter
    implicit none
 
-   public :: mh_swart
    private
 
-   interface mh_swart
-      module procedure :: mh_swart_packed
-      module procedure :: mh_swart_unpacked
-   end interface mh_swart
+   real(wp), parameter :: swart_rcov(size(covalent_radius_2009)) = &
+      covalent_radius_2009
+   ! Current parameterization uses equal values, but rvdw remains a distinct input.
+   real(wp), parameter :: swart_rvdw(size(covalent_radius_2009)) = &
+      covalent_radius_2009
+
+   type, public, extends(TModelHessian) :: TSwartModelHessian
+   contains
+      procedure :: stretch
+      procedure :: bend
+      procedure :: torsion
+      procedure :: outofplane
+      procedure :: add_charge
+   end type TSwartModelHessian
 
 contains
 
@@ -62,93 +76,22 @@ contains
 !  is not implemented in atomic units and requires some magical conversion
 !  factor somewhere hidden in the implementation below.
 !! ------------------------------------------------------------------------
-subroutine mh_swart_packed(xyz,n,hess,at,modh)
-   use xtb_mctc_constants
-   use xtb_mctc_convert
-   use xtb_mctc_param, only: rad => covalent_radius_2009
+subroutine add_charge(self, xyz, n, hess, at, kq)
+   class(TSwartModelHessian), intent(in) :: self
+   integer, intent(in) :: n
+   real(wp), intent(in) :: xyz(3, n)
+   real(wp), intent(inout) :: hess((3*n)*(3*n+1)/2)
+   integer, intent(in) :: at(n)
+   real(wp), intent(in) :: kq
 
-   use xtb_type_setvar
-   use xtb_type_param
-
-   implicit none
-
-   integer, intent(in)  :: n
-   real(wp),intent(in)  :: xyz(3,n)
-   real(wp),intent(out) :: hess((3*n)*(3*n+1)/2)
-   integer, intent(in)  :: at(n)
-   type(modhess_setvar),intent(in) :: modh
-
-   integer  :: n3
-   real(wp),parameter :: rzero = 1.0e-10_wp
-   logical, allocatable :: lcutoff(:,:)
    type(chrg_parameter) :: chrgeq
-   real(wp) :: kd
 
-   allocate( lcutoff(n,n), source=.false.)
+   call new_charge_model_2019(chrgeq, n, at)
+   call add_eeq_hessian(n, at, xyz, 0.0_wp, chrgeq, kq, hess)
+end subroutine add_charge
 
-   n3=3*n
-   hess = 0.0d0
-
-!  the dispersion force constant is used relative to the stretch force constant
-   kd = modh%kd/modh%kr
-
-   call mh_swart_stretch(n,at,xyz,hess,modh%kr,kd,modh%s6,rad,rad,lcutoff,modh%rcut)
-   if (modh%kf.ne.0.0_wp) &
-   call mh_swart_bend   (n,at,xyz,hess,modh%kf,kd,        rad,rad,lcutoff)
-   if (modh%kt.ne.0.0_wp) &
-   call mh_swart_torsion(n,at,xyz,hess,modh%kt,kd,        rad,rad,lcutoff)
-   if (modh%ko.ne.0.0_wp) &
-   call mh_swart_outofp (n,at,xyz,hess,modh%ko,kd,        rad,rad,lcutoff)
-   if (modh%kq.ne.0.0_wp) then
-      call new_charge_model_2019(chrgeq,n,at)
-      call mh_eeq(n,at,xyz,0.0_wp,chrgeq,modh%kq,hess)
-   endif
-
-end subroutine mh_swart_packed
-
-!> Dense symmetric 3N x 3N Swart model Hessian.
-!> Wraps mh_swart_packed and unpacks the lower-triangular packed
-!> (column-major, index i*(i-1)/2+j for element (j,i), j<=i) result
-!> into a full symmetric matrix for consumers needing dense storage
-!> (e.g. O1NumHess).
-subroutine mh_swart_unpacked(xyz,n,hess,at,modh)
-   use xtb_type_setvar
-   implicit none
-
-   integer, intent(in)  :: n
-   real(wp),intent(in)  :: xyz(3,n)
-   real(wp),intent(out) :: hess(3*n,3*n)
-   integer, intent(in)  :: at(n)
-   type(modhess_setvar),intent(in) :: modh
-
-   integer  :: i, n3
-   real(wp), allocatable :: hpack(:)
-   logical, allocatable :: mask(:,:)
-
-   n3 = 3*n
-   allocate(hpack(n3*(n3+1)/2), mask(n3,n3))
-   mask = .false.
-   do i = 1, n3
-      mask(1:i, i) = .true.
-   end do
-
-   call mh_swart_packed(xyz,n,hpack,at,modh)
-
-   hess = 0.0_wp
-   hess = unpack(hpack, mask, field=0.0_wp)
-   do i = 2, n3
-      hess(i, 1:i-1) = hess(1:i-1, i)
-   end do
-
-   deallocate(hpack, mask)
-end subroutine mh_swart_unpacked
-
-pure subroutine mh_swart_stretch(n,at,xyz,hess,kr,kd,s6,rcov,rvdw,lcutoff,rcut)
-   use xtb_mctc_constants
-   use xtb_mctc_convert
-
-   implicit none
-
+pure subroutine stretch(self, xyz, n, hess, at, kr, kd, s6, lcutoff, rcut)
+   class(TSwartModelHessian), intent(in) :: self
    integer, intent(in)    :: n
    integer, intent(in)    :: at(n)
    real(wp),intent(in)    :: xyz(3,n)
@@ -156,9 +99,7 @@ pure subroutine mh_swart_stretch(n,at,xyz,hess,kr,kd,s6,rcov,rvdw,lcutoff,rcut)
    real(wp),intent(in)    :: kr
    real(wp),intent(in)    :: kd
    real(wp),intent(in)    :: s6
-   real(wp),intent(in)    :: rcov(:)
-   real(wp),intent(in)    :: rvdw(:)
-   logical, intent(out)   :: lcutoff(n,n)
+   logical, intent(inout) :: lcutoff(n,n)
    real(wp),intent(in)    :: rcut
 
    integer  :: i,j
@@ -181,8 +122,8 @@ pure subroutine mh_swart_stretch(n,at,xyz,hess,kr,kd,s6,rcov,rvdw,lcutoff,rcut)
 
          rij = xyz(:,i) - xyz(:,j)
          rij2 = dot_product(rij, rij)
-         r0 = rcov(at(i))+rcov(at(j))
-         d0 = rvdw(at(i))+rvdw(at(j))
+         r0 = swart_rcov(at(i))+swart_rcov(at(j))
+         d0 = swart_rvdw(at(i))+swart_rvdw(at(j))
 
          !cccccc vdwx ccccccccccccccccccccccccccccccccc
          c6i = c6(at(i))
@@ -208,21 +149,16 @@ pure subroutine mh_swart_stretch(n,at,xyz,hess,kr,kd,s6,rcov,rvdw,lcutoff,rcut)
       end do stretch_jAt
    end do stretch_iAt
 
-end subroutine mh_swart_stretch
+end subroutine stretch
 
-pure subroutine mh_swart_bend(n,at,xyz,hess,kf,kd,rcov,rvdw,lcutoff)
-   use xtb_mctc_constants
-
-   implicit none
-
+pure subroutine bend(self, xyz, n, hess, at, force_constant, kd, lcutoff)
+   class(TSwartModelHessian), intent(in) :: self
    integer, intent(in)    :: n
    integer, intent(in)    :: at(n)
    real(wp),intent(in)    :: xyz(3,n)
    real(wp),intent(inout) :: hess((3*n)*(3*n+1)/2)
-   real(wp),intent(in)    :: kf
+   real(wp),intent(in)    :: force_constant
    real(wp),intent(in)    :: kd
-   real(wp),intent(in)    :: rcov(:)
-   real(wp),intent(in)    :: rvdw(:)
    logical, intent(in)    :: lcutoff(n,n)
 
    integer  :: i,j,m,ii
@@ -244,8 +180,8 @@ pure subroutine mh_swart_bend(n,at,xyz,hess,kf,kd,rcov,rvdw,lcutoff)
          vec_mi = xyz(:,i) - xyz(:,m)
          rmi2 = dot_product(vec_mi, vec_mi)
          rmi = sqrt(rmi2)
-         r0mi = rcov(at(m)) + rcov(at(i))
-         d0mi = rvdw(at(m)) + rvdw(at(i))
+         r0mi = swart_rcov(at(m)) + swart_rcov(at(i))
+         d0mi = swart_rvdw(at(m)) + swart_rvdw(at(i))
 
          bend_jAt: do j = 1, i-1
             if (j.eq.m) cycle bend_jAt
@@ -255,8 +191,8 @@ pure subroutine mh_swart_bend(n,at,xyz,hess,kf,kd,rcov,rvdw,lcutoff)
             vec_mj = xyz(:,j) - xyz(:,m)
             rmj2 = dot_product(vec_mj, vec_mj)
             rmj = sqrt(rmj2)
-            r0mj = rcov(at(m)) + rcov(at(j))
-            d0mj = rvdw(at(m)) + rvdw(at(j))
+            r0mj = swart_rcov(at(m)) + swart_rcov(at(j))
+            d0mj = swart_rvdw(at(m)) + swart_rvdw(at(j))
 
             ! test if zero angle
             test = dot_product(vec_mi, vec_mj) / (rmi * rmj)
@@ -267,7 +203,7 @@ pure subroutine mh_swart_bend(n,at,xyz,hess,kf,kd,rcov,rvdw,lcutoff)
             gmj = fk_swart(1.0_wp, r0mj, rmj2) &
                + 0.5_wp*kd * fk_vdw(5.0_wp, d0mj, rmj2)
 
-            gij = kf * gmi * gmj
+            gij = force_constant * gmi * gmj
 
             crv(1) = vec_mi(2)*vec_mj(3) - vec_mi(3)*vec_mj(2)
             crv(2) = vec_mi(3)*vec_mj(1) - vec_mi(1)*vec_mj(3)
@@ -302,21 +238,16 @@ pure subroutine mh_swart_bend(n,at,xyz,hess,kf,kd,rcov,rvdw,lcutoff)
       end do bend_iAt
    end do bend_mAt
 
-end subroutine mh_swart_bend
+end subroutine bend
 
-pure subroutine mh_swart_torsion(n,at,xyz,hess,kt,kd,rcov,rvdw,lcutoff)
-   use xtb_mctc_constants
-
-   implicit none
-
+pure subroutine torsion(self, xyz, n, hess, at, force_constant, kd, lcutoff)
+   class(TSwartModelHessian), intent(in) :: self
    integer, intent(in)    :: n
    integer, intent(in)    :: at(n)
    real(wp),intent(in)    :: xyz(3,n)
    real(wp),intent(inout) :: hess((3*n)*(3*n+1)/2)
-   real(wp),intent(in)    :: kt
+   real(wp),intent(in)    :: force_constant
    real(wp),intent(in)    :: kd
-   real(wp),intent(in)    :: rcov(:)
-   real(wp),intent(in)    :: rvdw(:)
    logical, intent(in)    :: lcutoff(n,n)
 
    integer  :: i,j,k,l,ij,kl
@@ -362,16 +293,16 @@ pure subroutine mh_swart_torsion(n,at,xyz,hess,kt,kd,rcov,rvdw,lcutoff)
                txyz(:,4)=xyz(:,l)
 
                rij=xyz(:,i)-xyz(:,j)
-               d0ij=rvdw(at(i))+rvdw(at(j))
-               rij0=rcov(at(i))+rcov(at(j))
+               d0ij=swart_rvdw(at(i))+swart_rvdw(at(j))
+               rij0=swart_rcov(at(i))+swart_rcov(at(j))
 
                rjk=xyz(:,j)-xyz(:,k)
-               d0jk=rvdw(at(j))+rvdw(at(k))
-               rjk0=rcov(at(j))+rcov(at(k))
+               d0jk=swart_rvdw(at(j))+swart_rvdw(at(k))
+               rjk0=swart_rcov(at(j))+swart_rcov(at(k))
 
                rkl=xyz(:,k)-xyz(:,l)
-               d0kl=rvdw(at(k))+rvdw(at(l))
-               rkl0=rcov(at(k))+rcov(at(l))
+               d0kl=swart_rvdw(at(k))+swart_rvdw(at(l))
+               rkl0=swart_rcov(at(k))+swart_rcov(at(l))
 
                rij2=dot_product(rij,rij)
                rjk2=dot_product(rjk,rjk)
@@ -389,7 +320,7 @@ pure subroutine mh_swart_torsion(n,at,xyz,hess,kt,kd,rcov,rvdw,lcutoff)
                gkl = fk_swart(1.0_wp,rkl0,rkl2) &
                   + 0.5_wp*kd * fk_vdw(5.0_wp,d0kl,rkl2)
 
-               tij = kt * gij*gjk*gkl
+               tij = force_constant * gij*gjk*gkl
 
                 !tij = max(tij,10*min_fk)
 
@@ -402,21 +333,16 @@ pure subroutine mh_swart_torsion(n,at,xyz,hess,kt,kd,rcov,rvdw,lcutoff)
        end do torsion_kAt
     end do torsion_jAt
 
-end subroutine mh_swart_torsion
+end subroutine torsion
 
-pure subroutine mh_swart_outofp(n,at,xyz,hess,ko,kd,rcov,rvdw,lcutoff)
-   use xtb_mctc_constants
-
-   implicit none
-
+pure subroutine outofplane(self, xyz, n, hess, at, force_constant, kd, lcutoff)
+   class(TSwartModelHessian), intent(in) :: self
    integer, intent(in)    :: n
    integer, intent(in)    :: at(n)
    real(wp),intent(in)    :: xyz(3,n)
    real(wp),intent(inout) :: hess((3*n)*(3*n+1)/2)
-   real(wp),intent(in)    :: ko
+   real(wp),intent(in)    :: force_constant
    real(wp),intent(in)    :: kd
-   real(wp),intent(in)    :: rcov(:)
-   real(wp),intent(in)    :: rvdw(:)
    logical, intent(in)    :: lcutoff(n,n)
 
    integer  :: i,ir,j,jr,k,kr,l,lr
@@ -453,16 +379,16 @@ pure subroutine mh_swart_outofp(n,at,xyz,hess,ko,kd,rcov,rvdw,lcutoff)
                if(lcutoff(l,j)) cycle outofplane_lAt
 
                rij=xyz(:,i)-xyz(:,j)
-               rij0=rcov(at(i))+rcov(at(j))
-               d0ij=rvdw(at(i))+rvdw(at(j))
+               rij0=swart_rcov(at(i))+swart_rcov(at(j))
+               d0ij=swart_rvdw(at(i))+swart_rvdw(at(j))
 
                rik=xyz(:,i)-xyz(:,k)
-               rik0=rcov(at(i))+rcov(at(k))
-               d0ik=rvdw(at(i))+rvdw(at(k))
+               rik0=swart_rcov(at(i))+swart_rcov(at(k))
+               d0ik=swart_rvdw(at(i))+swart_rvdw(at(k))
 
                ril=xyz(:,i)-xyz(:,l)
-               ril0=rcov(at(i))+rcov(at(l))
-               d0il=rvdw(at(i))+rvdw(at(l))
+               ril0=swart_rcov(at(i))+swart_rcov(at(l))
+               d0il=swart_rvdw(at(i))+swart_rvdw(at(l))
 
                rij2=dot_product(rij,rij)
                rik2=dot_product(rik,rik)
@@ -482,7 +408,7 @@ pure subroutine mh_swart_outofp(n,at,xyz,hess,ko,kd,rcov,rvdw,lcutoff)
                gil = fk_swart(1.0_wp,ril0,ril2) &
                   + 0.5_wp*kd * fk_vdw(5.0_wp,d0il,ril2)
 
-               tij = ko * gij*gik*gil
+               tij = force_constant * gij*gik*gil
 
                !tij = max(tij,10*min_fk)
 
@@ -498,6 +424,6 @@ pure subroutine mh_swart_outofp(n,at,xyz,hess,ko,kd,rcov,rvdw,lcutoff)
        enddo outofplane_jAt
     enddo outofplane_iAt
 
-end subroutine mh_swart_outofp
+end subroutine outofplane
 
 end module xtb_modelhessian_swart

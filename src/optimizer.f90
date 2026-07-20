@@ -1228,8 +1228,9 @@ end subroutine prdispl
 subroutine modhes(env, calc, modh, natoms, xyz, chg, Hess, pr)
    use xtb_type_setvar
    use xtb_modelhessian_gff, only : mh_gff
-   use xtb_modelhessian_lindh, only : mh_lindh, mh_lindh_d2
-   use xtb_modelhessian_swart, only : mh_swart
+   use xtb_modelhessian_type, only : TModelHessian
+   use xtb_modelhessian_lindh, only : TLindhModelHessian, TLindhD2ModelHessian
+   use xtb_modelhessian_swart, only : TSwartModelHessian
    use xtb_setparam
    use xtb_type_calculator
    use xtb_gfnff_calculator
@@ -1248,6 +1249,9 @@ subroutine modhes(env, calc, modh, natoms, xyz, chg, Hess, pr)
 
    !> Calculator
    class(TCalculator), intent(inout) :: calc
+
+   !> Model Hessian implementation
+   class(TModelHessian), allocatable :: model_hessian
 
    type(modhess_setvar),intent(in) :: modh
    logical, intent(in)  :: pr
@@ -1273,16 +1277,16 @@ subroutine modhes(env, calc, modh, natoms, xyz, chg, Hess, pr)
          return
       case(p_modh_old)
          if (pr) write(env%unit,'(a)') "Using Lindh-Hessian (1995)"
-         call mh_lindh_d2(xyz, natoms, Hess, chg, modh)
+         allocate(TLindhD2ModelHessian :: model_hessian)
       case(p_modh_lindh_d2)
-        if (pr) write(env%unit,'(a)') "Using Lindh-Hessian"
-        call mh_lindh_d2(xyz, natoms, Hess, chg, modh)
+         if (pr) write(env%unit,'(a)') "Using Lindh-Hessian"
+         allocate(TLindhD2ModelHessian :: model_hessian)
       case(p_modh_lindh)
-        if (pr) write(env%unit,'(a)') "Using Lindh-Hessian (2007)"
-        call mh_lindh(xyz, natoms, Hess, chg, modh)
+         if (pr) write(env%unit,'(a)') "Using Lindh-Hessian (2007)"
+         allocate(TLindhModelHessian :: model_hessian)
       case(p_modh_swart)
-        if (pr) write(env%unit,'(a)') "Using Swart-Hessian"
-        call mh_swart(xyz, natoms, Hess, chg, modh)
+         if (pr) write(env%unit,'(a)') "Using Swart-Hessian"
+         allocate(TSwartModelHessian :: model_hessian)
       end select
    type is(TGFFCalculator) ! GFN-FF case
       select case(modh%model)
@@ -1293,16 +1297,20 @@ subroutine modhes(env, calc, modh, natoms, xyz, chg, Hess, pr)
          if (pr) write(env%unit,'(a)') "Using GFN-FF Lindh-Hessian"
          call mh_gff(xyz, natoms, Hess, chg, modh%s6, calc%param, calc%topo, calc%neigh)
       case(p_modh_lindh_d2)
-        if (pr) write(env%unit,'(a)') "Using Lindh-Hessian"
-        call mh_lindh_d2(xyz, natoms, Hess, chg, modh)
+         if (pr) write(env%unit,'(a)') "Using Lindh-Hessian"
+         allocate(TLindhD2ModelHessian :: model_hessian)
       case(p_modh_lindh)
-        if (pr) write(env%unit,'(a)') "Using Lindh-Hessian (2007)"
-        call mh_lindh(xyz, natoms, Hess, chg, modh)
+         if (pr) write(env%unit,'(a)') "Using Lindh-Hessian (2007)"
+         allocate(TLindhModelHessian :: model_hessian)
       case(p_modh_swart)
-        if (pr) write(env%unit,'(a)') "Using Swart-Hessian"
-        call mh_swart(xyz, natoms, Hess, chg, modh)
+         if (pr) write(env%unit,'(a)') "Using Swart-Hessian"
+         allocate(TSwartModelHessian :: model_hessian)
       end select
    end select
+
+   if (allocated(model_hessian)) then
+      call model_hessian%compute(xyz, natoms, Hess, chg, modh)
+   end if
 
 !  constraints
    call constrhess(natoms,chg,xyz,Hess)

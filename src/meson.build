@@ -107,6 +107,7 @@ srcs += files(
   'mdoptim.f90',
   'metadynamic.f90',
   'modef.f90',
+  'model_hessian/type.f90',
   'model_hessian/eeq.f90',
   'model_hessian/gff.f90',
   'model_hessian/lindh.f90',

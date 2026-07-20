@@ -15,18 +15,16 @@
 ! You should have received a copy of the GNU Lesser General Public License
 ! along with xtb.  If not, see <https://www.gnu.org/licenses/>.
 
-!! ========================================================================
-!  This module implements various model Hessians, the actual definition
-!  of the model Hessian is given in the description of each header, the
-!  implementation following tries to do its very best to transform it back
-!  from redundant internal coordinates (where the model is defined) to
-!  Cartesian coordinates which are then used in any imaginable fashion
-!  later on in the actual optimization.                        - SAW190131
-!! ========================================================================
+!> Shared utilities used by model Hessian implementations.
+!>
+!> The EEQ contribution is an optional additive term, not a standalone
+!> model Hessian.
 
 module xtb_modelhessian_eeq
    use xtb_mctc_accuracy, only : wp
+   use xtb_mctc_constants
    use xtb_mctc_convert, only : aatoau
+   use xtb_type_param, only : chrg_parameter
    implicit none
 
    public :: c6
@@ -45,7 +43,7 @@ module xtb_modelhessian_eeq
    public :: fk_lindh
    public :: fk_swart
    public :: fk_vdw
-   public :: mh_eeq
+   public :: add_eeq_hessian
    private
 
 !  van-der-Waals radii used in the D2 model
@@ -96,11 +94,13 @@ pure elemental function ixyz(i,iatom)
    integer,intent(in) :: i,iatom
    ixyz = (iatom-1)*3 + i
 end function ixyz
+
 pure elemental function jnd(i,j)
    integer :: jnd
    integer,intent(in) :: i,j
    jnd = i*(i-1)/2 +j
 end function jnd
+
 pure elemental function ind(i,iatom,j,jatom)
    integer :: ind
    integer,intent(in) :: i,iatom,j,jatom
@@ -108,7 +108,6 @@ pure elemental function ind(i,iatom,j,jatom)
 end function ind
 
 pure function rcutoff(xyz,katom,latom,rcut)
-   implicit none
    logical  :: rcutoff
    real(wp),intent(in) :: xyz(3,*)
    real(wp),intent(in) :: rcut
@@ -145,8 +144,6 @@ pure elemental function itabrow(i)
 end function itabrow
 
 pure subroutine outofp2(xyz,teta,bt)
-   use xtb_mctc_constants
-   implicit none
    real(wp),intent(out) :: teta
    real(wp),intent(out) :: bt(3,4)
    real(wp),intent(in)  :: xyz(3,4)
@@ -245,8 +242,6 @@ pure subroutine outofp2(xyz,teta,bt)
 end subroutine outofp2
 
 pure subroutine trsn2(xyz,tau,bt)
-   use xtb_mctc_constants
-   implicit none
    real(wp),intent(out) :: bt(3,4)
    real(wp),intent(out) :: tau
    real(wp),intent(in)  :: xyz(3,4)
@@ -293,8 +288,8 @@ pure subroutine trsn2(xyz,tau,bt)
       bt(ix,3) = - ( bt(ix,1)+bt(ix,2)+bt(ix,4))
    end do
 end subroutine trsn2
+
 pure subroutine strtch2(xyz,avst,b)
-   implicit none
    real(wp),intent(out) :: b(3,2)
    real(wp),intent(in)  :: xyz(3,2)
    real(wp) :: r(3)
@@ -306,9 +301,8 @@ pure subroutine strtch2(xyz,avst,b)
    b(:,1)=-r/rr
    b(:,2)=-b(:,1)
 end subroutine strtch2
+
 pure subroutine bend2(xyz,fir,bf)
-   use xtb_mctc_constants
-   implicit none
    real(wp),intent(out) :: bf(3,3)
    real(wp),intent(in)  :: xyz(3,3)
    real(wp) :: brij(3,2)
@@ -346,7 +340,6 @@ end subroutine bend2
 
 pure elemental subroutine getvdwxy(rx,ry,rz, c66, s6,r0, vdw)
    !cc Ableitung nach rx und ry
-   implicit none
    real(wp),intent(in)  :: rx,ry,rz,c66,s6,r0
    real(wp),intent(out) :: vdw
    real(wp) :: t1,t2,t3,t4,t5,t6,t7,t11,t12,t16,t17,t25,t26,t35
@@ -379,7 +372,6 @@ end subroutine getvdwxy
 
 pure elemental subroutine getvdwxx(rx, ry, rz, c66, s6, r0, vdw)
    !cc Ableitung nach rx und rx
-   implicit none
    real(wp),intent(in)  :: rx,ry,rz,c66,s6,r0
    real(wp),intent(out) :: vdw
    real(wp) :: t1,t2,t3,t4,t5,t6,t7,t10,t11,t15,t16,t17,t24,t25,t29
@@ -431,29 +423,25 @@ pure subroutine getvdw_hess(vec, c66, s6, r0, vdw)
 end subroutine getvdw_hess
 
 pure elemental function fk_lindh(alpha,r0,r2) result(gmm)
-   implicit none
    real(wp),intent(in) :: alpha,r0,r2
    real(wp) :: gmm
    gmm = exp(alpha*(r0**2 - r2))
 end function fk_lindh
 
 pure elemental function fk_swart(alpha,r0,r2) result(gmm)
-   implicit none
    real(wp),intent(in) :: alpha,r0,r2
    real(wp) :: gmm
    gmm = exp(-alpha*(sqrt(r2)/r0 - 1.0_wp))
 end function fk_swart
 
 pure elemental function fk_vdw(alpha,r0,r2) result(gmm)
-   implicit none
    real(wp),intent(in) :: alpha,r0,r2
    real(wp) :: gmm
    gmm = exp(-alpha*(r0 - sqrt(r2))**2)
 end function fk_vdw
 
-subroutine mh_eeq(n,at,xyz,chrg,chrgeq,kq,hess)
-   use xtb_type_param
-   implicit none
+!> Add EEQ contribution to an existing packed Hessian.
+subroutine add_eeq_hessian(n,at,xyz,chrg,chrgeq,kq,hess)
 
 !! ------------------------------------------------------------------------
 !  Input
@@ -467,7 +455,7 @@ subroutine mh_eeq(n,at,xyz,chrg,chrgeq,kq,hess)
 !! ------------------------------------------------------------------------
 !  Output
 !! ------------------------------------------------------------------------
-   real(wp),intent(out)   :: hess((3*n)*(3*n+1)/2)
+   real(wp),intent(inout) :: hess((3*n)*(3*n+1)/2)
    real(wp),allocatable   :: hessian(:,:,:,:) ! molecular hessian of IES
 
 !  π itself
@@ -758,6 +746,6 @@ subroutine mh_eeq(n,at,xyz,chrg,chrgeq,kq,hess)
    !call dgemm('n','t',3*n,m,3*n,+1.0_wp,dqdr,3*n,dAmat,3*n,1.0_wp,hessian,3*n)
    !call dgemm('n','t',3*n,m,3*n,+1.0_wp,dAmat,3*n,dqdr,3*n,1.0_wp,hessian,3*n)
 
-end subroutine mh_eeq
+end subroutine add_eeq_hessian
 
 end module xtb_modelhessian_eeq

@@ -109,6 +109,7 @@ list(APPEND srcs
   "${dir}/mdoptim.f90"
   "${dir}/metadynamic.f90"
   "${dir}/modef.f90"
+  "${dir}/model_hessian/type.f90"
   "${dir}/model_hessian/eeq.f90"
   "${dir}/model_hessian/gff.f90"
   "${dir}/model_hessian/lindh.f90"
