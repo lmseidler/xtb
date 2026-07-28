@@ -30,20 +30,6 @@ module test_bmatrix
    real(wp), parameter :: thr = 100*epsilon(0.0_wp)
    real(wp), parameter :: thr_loose = 1.0e-9_wp
 
-   ! External Trsn from lindh.f90 for equivalence testing
-   interface
-      subroutine Trsn(xyz, nCent, Tau, Bt, lWrite, lWarn, Label, dBt, ldB)
-         import :: wp
-         integer, intent(in) :: nCent
-         real(wp), intent(in) :: xyz(3, nCent)
-         real(wp), intent(out) :: Tau
-         real(wp), intent(out) :: Bt(3, nCent)
-         real(wp), intent(out) :: dBt(3, nCent, 3, nCent)
-         logical, intent(in) :: lWrite, lWarn, ldB
-         character(len=8), intent(in) :: Label
-      end subroutine Trsn
-   end interface
-
    public :: collect_bmatrix
 
 contains
@@ -56,7 +42,6 @@ subroutine collect_bmatrix(testsuite)
        new_unittest("bond-fd", test_bond_fd), &
        new_unittest("angle-fd", test_angle_fd), &
        new_unittest("linbend-invariance", test_linbend_fd), &
-       new_unittest("torsion-trsn2-vs-Trsn", test_torsion_equivalence), &
        new_unittest("torsion-fd", test_torsion_fd), &
        new_unittest("torsion-sign", test_torsion_sign), &
        new_unittest("torsion-atom-order", test_torsion_atom_order), &
@@ -226,27 +211,6 @@ subroutine test_linbend_fd(error)
       & message="linbend rows not orthogonal")
 end subroutine test_linbend_fd
 
-
-!> Equivalence check: bmat_torsion vs external Trsn from lindh.f90
-subroutine test_torsion_equivalence(error)
-   type(error_type), allocatable, intent(out) :: error
-
-   ! 4-atom fragment with a non-trivial dihedral
-   real(wp), parameter :: xyz4(3, 4) = reshape([ &
-      & 0.0_wp, 0.0_wp, 0.0_wp, &
-      & 1.0_wp, 0.0_wp, 0.0_wp, &
-      & 1.5_wp, 0.8_wp, 0.2_wp, &
-      & 2.0_wp, 0.9_wp, -0.5_wp], shape(xyz4))
-   real(wp) :: tau_trsn
-   real(wp) :: bt_bmat(3, 4), bt_trsn(3, 4)
-   real(wp) :: dummy_dbt(3, 4, 3, 4)
-
-   bt_bmat = bmat_torsion(xyz4)
-   call Trsn(xyz4, 4, tau_trsn, bt_trsn, .false., .false., '        ', &
-      &      dummy_dbt, .false.)
-
-   call check_bmat_2d_t(error, bt_bmat, bt_trsn, thr)
-end subroutine test_torsion_equivalence
 
 !> Finite-difference check of bmat_torsion
 subroutine test_torsion_fd(error)

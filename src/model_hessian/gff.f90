@@ -37,6 +37,7 @@ contains
       use xtb_gfnff_topology, only : TGFFTopology
       use xtb_gfnff_neighbor, only : TNeigh
       use xtb_type_timer
+      use xtb_bmatrix, only : bmat_torsion
       Implicit Integer (i-n)
       Implicit Real*8 (a-h, o-z)
       type(TGFFData), intent(in) :: param
@@ -52,7 +53,7 @@ contains
       Real*8 rij(3),rjk(3),rkl(3),&
      &       si(3),sj(3),sk(3),&
      &       sl(3),sm(3),x(2),y(2),z(2),&
-     &       xyz(3,4), C(3,4), Dum(3,4,3,4) 
+     &       xyz(3,4), C(3,4)
       Real*8 rAV(3,3), aAV(3,3),rkr, rkf
       Integer iANr(nAtoms)
       logical profile
@@ -459,7 +460,7 @@ contains
                beta=rkt*exp( (aij*rij0+ajk*rjk0+akl*rkl0))
                tij=beta*exp(-(aij*rij2+ajk*rjk2+akl*rkl2))
 
-               Call Trsn(xyz,4,Tau,C,.False.,.False.,'        ',Dum,.False.)
+               C = bmat_torsion(xyz)
                si(1:3)=C(1:3,1)
                sj(1:3)=C(1:3,2)
                sk(1:3)=C(1:3,3)

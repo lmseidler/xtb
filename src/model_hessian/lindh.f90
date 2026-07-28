@@ -29,7 +29,8 @@ module xtb_modelhessian_lindh
    use xtb_mctc_constants
    use xtb_mctc_convert
    use xtb_chargemodel, only : new_charge_model_2019
-   use xtb_bmatrix, only : bmat_bond, bmat_accum_packed, bmat_accum_pairblock_packed
+   use xtb_bmatrix, only : bmat_bond, bmat_torsion, bmat_accum_packed, &
+      & bmat_accum_pairblock_packed
    use xtb_modelhessian_type, only : TModelHessian
    use xtb_modelhessian_eeq, only : c6, vander, itabrow, rcutoff, outofp2, &
       & getvdw_hess, fk_lindh, fk_vdw, add_eeq_hessian
@@ -428,7 +429,7 @@ subroutine torsion(self, xyz, n, hess, at, force_constant, kd, lcutoff)
    real(wp) :: rjk(3),rjk0,ajk,rjk2,d0jk,gjk
    real(wp) :: rkl(3),rkl0,akl,rkl2,d0kl,gkl
    real(wp) :: cosfi2,cosfi3,cosfi4
-   real(wp) :: beta,tij,tau,dum(3,4,3,4)
+   real(wp) :: beta,tij
    real(wp) :: si(3),sj(3),sk(3),sl(3)
    real(wp) :: brow12(12)
 
@@ -506,9 +507,7 @@ subroutine torsion(self, xyz, n, hess, at, force_constant, kd, lcutoff)
 
                !tij = max(tij,10*min_fk)
 
-               !call trsn2(txyz,tau,c)
-               Call Trsn(txyz,4,Tau,C,.False.,.False.,'        ', &
-      &                  Dum,.False.)
+               c = bmat_torsion(txyz)
                si = c(:,1)
                sj = c(:,2)
                sk = c(:,3)
