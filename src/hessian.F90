@@ -1,6 +1,7 @@
 ! This file is part of xtb.
 !
 ! Copyright (C) 2017-2021 Stefan Grimme
+! Copyright (C) 2026 Leopold M. Seidler
 !
 ! xtb is free software: you can redistribute it and/or modify it under
 ! the terms of the GNU Lesser General Public License as published by
