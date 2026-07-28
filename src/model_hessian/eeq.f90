@@ -123,6 +123,11 @@ pure elemental function itabrow(i)
    integer :: itabrow
    integer,intent(in) :: i
 
+   ! NOTE: rows 4-7 all return 3 — every element past Ar (Z>18) collapses
+   ! to "row 3". Intentional? Periods 4,5,6,7 (K-Rn, Z=19-86) should be
+   ! rows 4,5,6,7. Carried over verbatim from legacy src/lindh.f90 iTabRow.
+   ! Affects Lindh/Swart/GFF model Hessian force-constant scaling via
+   ! fk_lindh/fk_swart which branch on itabrow return value.
    itabrow=0
    if (i.gt. 0 .and. i.le. 2) then
       itabrow=1

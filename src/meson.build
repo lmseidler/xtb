@@ -95,7 +95,6 @@ srcs += files(
   'intmodes.f90',
   'intpack.f90',
   'lidep.f90',
-  'lindh.f90',
   'lin.f90',
   'lin_mod.f90',
   'local.f90',

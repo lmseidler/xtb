@@ -38,6 +38,7 @@ contains
       use xtb_gfnff_neighbor, only : TNeigh
       use xtb_type_timer
       use xtb_bmatrix, only : bmat_torsion
+      use xtb_modelhessian_eeq, only : itabrow
       Implicit Integer (i-n)
       Implicit Real*8 (a-h, o-z)
       type(TGFFData), intent(in) :: param
@@ -147,8 +148,8 @@ contains
       do ibond=1,neigh%nbond
          kAtom=neigh%blist(1,ibond)
          lAtom=neigh%blist(2,ibond)
-         kr=iTabRow(iANr(kAtom))
-         lr=iTabRow(iANr(lAtom))
+         kr=itabrow(iANr(kAtom))
+         lr=itabrow(iANr(lAtom))
             xkl=Cart(1,kAtom)-Cart(1,lAtom)
             ykl=Cart(2,kAtom)-Cart(2,lAtom)
             zkl=Cart(3,kAtom)-Cart(3,lAtom)
@@ -242,9 +243,9 @@ contains
          mAtom=topo%alist(1,iangl)
          iAtom=topo%alist(2,iangl)
          jAtom=topo%alist(3,iangl)
-         mr=iTabRow(iANr(mAtom))
-         ir=iTabRow(iANr(iAtom))
-         jr=iTabRow(iANr(jAtom))
+         mr=itabrow(iANr(mAtom))
+         ir=itabrow(iANr(iAtom))
+         jr=itabrow(iANr(jAtom))
  
             xmi=(Cart(1,iAtom)-Cart(1,mAtom))
             ymi=(Cart(2,iAtom)-Cart(2,mAtom))
@@ -430,10 +431,10 @@ contains
          kAtom=topo%tlist(2,itors)
          lAtom=topo%tlist(4,itors)
 
-                 ir=iTabRow(iANr(iAtom))
-                 jr=iTabRow(iANr(jAtom))
-                 kr=iTabRow(iANr(kAtom))
-                 lr=iTabRow(iANr(lAtom))
+                 ir=itabrow(iANr(iAtom))
+                 jr=itabrow(iANr(jAtom))
+                 kr=itabrow(iANr(kAtom))
+                 lr=itabrow(iANr(lAtom))
                  xyz(1:3,1)=Cart(1:3,iAtom)
                  xyz(1:3,2)=Cart(1:3,jAtom)
                  xyz(1:3,3)=Cart(1:3,kAtom)
