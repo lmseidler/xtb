@@ -27,7 +27,9 @@ module xtb_type_calculator
    use xtb_type_molecule, only : TMolecule
    use xtb_type_restart, only : TRestart
    use xtb_o1numhess, only : adj_list, gen_local_hessian, &
-   & lr_loop, gen_displdir, get_vdw_neighbor_list, swart, find_projected_imag_modes
+   & lr_loop, gen_displdir, get_vdw_neighbor_list, find_projected_imag_modes
+   use xtb_modelhessian_swart, only : TSwartModelHessian
+   use xtb_type_setvar, only : modhess_setvar
    use xtb_param_uffvdwrad, only : get_rad
    use xtb_param_covalentrad, only : get_cov_rad
    implicit none
@@ -315,7 +317,13 @@ subroutine hessian_odlr(self, env, mol0, chk0, step, hess, final_err, dipgrad, p
 
    ! hessian initial guess
    allocate (h0(N, N))
-   call swart(env, mol%xyz, mol%at, h0)
+   block
+      type(TSwartModelHessian) :: model_hessian
+      type(modhess_setvar) :: modh
+      modh = modhess_setvar(kr=0.4000_wp, kf=0.1300_wp, kt=0.0075_wp, &
+         & ko=0.16_wp, kd=0.0_wp, kq=0.0_wp, rcut=70.0_wp, s6=20.0_wp)
+      call model_hessian%compute(mol%xyz, mol%n, h0, mol%at, modh)
+   end block
    call env%check(terminate_run)
    if (terminate_run) then
       return

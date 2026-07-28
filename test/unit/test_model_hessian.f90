@@ -36,7 +36,6 @@ module test_model_hessian
    use xtb_modelhessian_swart, only : TSwartModelHessian
    use xtb_type_param, only : chrg_parameter
    use xtb_type_setvar, only : modhess_setvar
-   use xtb_o1numhess, only : swart
    use xtb_test_molstock, only : getMolecule
    use xtb_type_environment, only : TEnvironment, init
    implicit none
@@ -74,8 +73,6 @@ subroutine collect_model_hessian(testsuite)
       new_unittest("model_hessian_dense", test_model_hessian_dense), &
       new_unittest("model_hessian_charge", test_model_hessian_charge), &
       new_unittest("eeq_addition", test_eeq_addition), &
-      ! Modified Swart (O1NumHess variant), hardcoded H2O reference
-      new_unittest("modified_swart_h2o", test_modified_swart_h2o), &
       ! Out-of-plane behavior (ko != 0)
       new_unittest("lindh_d2_caffeine_oop", test_lindh_d2_caffeine_oop), &
       new_unittest("lindh_caffeine_oop", test_lindh_caffeine_oop), &
@@ -428,62 +425,5 @@ subroutine test_swart_caffeine_oop(error)
    type(error_type), allocatable, intent(out) :: error
    call test_mh(error, "caffeine", VAR_SWART, oop_modh(), "swart_caffeine_oop")
 end subroutine
-
-!> Modified Swart (O1NumHess variant) on H2O against hardcoded reference.
-subroutine test_modified_swart_h2o(error)
-   type(error_type), allocatable, intent(out) :: error
-   integer, parameter :: nat = 3
-   integer, parameter :: at(nat) = [8, 1, 1]
-   real(wp), parameter :: xyz(3, nat) = reshape([&
-      & 0.00000000000000_wp,    0.00000000034546_wp,    0.18900383618455_wp, &
-      & 0.00000000000000_wp,    1.45674735348811_wp,   -0.88650486059828_wp, &
-      &-0.00000000000000_wp,   -1.45674735383357_wp,   -0.88650486086986_wp],&
-      & shape(xyz))
-   real(wp), parameter :: h0(9, 9) = reshape([&
-      & 1.10923040379630813E-003_wp,  0.00000000000000000E+000_wp,  0.00000000000000000E+000_wp, &
-      &-5.54615203637871161E-004_wp,  0.00000000000000000E+000_wp,  0.00000000000000000E+000_wp, &
-      &-5.54615200158437081E-004_wp,  0.00000000000000000E+000_wp,  0.00000000000000000E+000_wp, &
-      & 0.00000000000000000E+000_wp,  4.41847483616303494E-001_wp, -2.75527608981326075E-010_wp, &
-      & 0.00000000000000000E+000_wp, -2.20923741962403913E-001_wp,  1.63107694353669314E-001_wp, &
-      & 0.00000000000000000E+000_wp, -2.20923741653899580E-001_wp, -1.63107694078141713E-001_wp, &
-      & 0.00000000000000000E+000_wp, -2.75527608981326075E-010_wp,  2.94170327797027287E-001_wp, &
-      & 0.00000000000000000E+000_wp,  1.43195816033720724E-001_wp, -1.47085164039258476E-001_wp, &
-      & 0.00000000000000000E+000_wp, -1.43195815758193096E-001_wp, -1.47085163757768811E-001_wp, &
-      &-5.54615203637870945E-004_wp,  0.00000000000000000E+000_wp,  0.00000000000000000E+000_wp, &
-      & 1.67247069737169415E-003_wp,  0.00000000000000000E+000_wp,  0.00000000000000000E+000_wp, &
-      &-1.11785549373382320E-003_wp,  0.00000000000000000E+000_wp,  0.00000000000000000E+000_wp, &
-      & 0.00000000000000000E+000_wp, -2.20923741962403913E-001_wp,  1.43195816033720724E-001_wp, &
-      & 0.00000000000000000E+000_wp,  2.33232059827628624E-001_wp, -1.53151755195756606E-001_wp, &
-      & 0.00000000000000000E+000_wp, -1.23083178652246897E-002_wp,  9.95593916203589037E-003_wp, &
-      & 0.00000000000000000E+000_wp,  1.63107694353669314E-001_wp, -1.47085164039258476E-001_wp, &
-      & 0.00000000000000000E+000_wp, -1.53151755195756606E-001_wp,  1.33753677076693056E-001_wp, &
-      & 0.00000000000000000E+000_wp, -9.95593915791269726E-003_wp,  1.33314869625654146E-002_wp, &
-      &-5.54615200158437190E-004_wp,  0.00000000000000000E+000_wp,  0.00000000000000000E+000_wp, &
-      &-1.11785549373382299E-003_wp,  0.00000000000000000E+000_wp,  0.00000000000000000E+000_wp, &
-      & 1.67247069389226039E-003_wp,  0.00000000000000000E+000_wp,  0.00000000000000000E+000_wp, &
-      & 0.00000000000000000E+000_wp, -2.20923741653899580E-001_wp, -1.43195815758193096E-001_wp, &
-      & 0.00000000000000000E+000_wp, -1.23083178652246897E-002_wp, -9.95593915791269726E-003_wp, &
-      & 0.00000000000000000E+000_wp,  2.33232059519124291E-001_wp,  1.53151754916105803E-001_wp, &
-      & 0.00000000000000000E+000_wp, -1.63107694078141713E-001_wp, -1.47085163757768811E-001_wp, &
-      & 0.00000000000000000E+000_wp,  9.95593916203589037E-003_wp,  1.33314869625654146E-002_wp, &
-      & 0.00000000000000000E+000_wp,  1.53151754916105803E-001_wp,  1.33753676795203363E-001_wp],&
-      & shape(h0))
-
-   type(TEnvironment) :: env
-   integer :: i, j
-   real(wp), allocatable :: hess_out(:, :)
-
-   call init(env)
-   allocate(hess_out(3*nat, 3*nat))
-   hess_out = 0.0_wp
-   call swart(env, xyz, at, hess_out)
-
-   do i = 1, 3*nat
-      do j = 1, 3*nat
-         call check(error, hess_out(j, i), h0(j, i), thr=thr)
-         if (allocated(error)) return
-      end do
-   end do
-end subroutine test_modified_swart_h2o
 
 end module test_model_hessian
