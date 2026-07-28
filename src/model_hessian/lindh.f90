@@ -359,11 +359,11 @@ pure subroutine bend(self, xyz, n, hess, at, force_constant, kd, lcutoff)
                   sj(1)=(cosphi*xmj/rmj-xmi/rmi)/(rmj*sinphi)
                   sj(2)=(cosphi*ymj/rmj-ymi/rmi)/(rmj*sinphi)
                   sj(3)=(cosphi*zmj/rmj-zmi/rmi)/(rmj*sinphi)
-                   sm(1)=-si(1)-sj(1)
-                   sm(2)=-si(2)-sj(2)
-                   sm(3)=-si(3)-sj(3)
-                   bmat9 = [si, sm, sj]
-                   call bmat_accum_packed(n, hess, [i, m, j], bmat9, gij)
+                  sm(1)=-si(1)-sj(1)
+                  sm(2)=-si(2)-sj(2)
+                  sm(3)=-si(3)-sj(3)
+                  bmat9 = [si, sm, sj]
+                  call bmat_accum_packed(n, hess, [i, m, j], bmat9, gij)
                 else
                   ! linear case
                   if ((abs(ymi) > rzero) .or. (abs(xmi) > rzero)) then
@@ -491,10 +491,10 @@ subroutine torsion(self, xyz, n, hess, at, force_constant, kd, lcutoff)
                rjk2=dot_product(rjk,rjk)
                rkl2=dot_product(rkl,rkl)
 
-                cosfi2=dot_product(rij,rjk)/sqrt(rij2*rjk2)
-                if (abs(cosfi2) > cosfi_max) cycle torsion_lAt
-                cosfi3=dot_product(rkl,rjk)/sqrt(rkl2*rjk2)
-                if (abs(cosfi3) > cosfi_max) cycle torsion_lAt
+               cosfi2=dot_product(rij,rjk)/sqrt(rij2*rjk2)
+               if (abs(cosfi2) > cosfi_max) cycle torsion_lAt
+               cosfi3=dot_product(rkl,rjk)/sqrt(rkl2*rjk2)
+               if (abs(cosfi3) > cosfi_max) cycle torsion_lAt
 
                gij = fk_lindh(aij,rij0,rij2) &
                   + 0.5_wp*kd * fk_vdw(4.0_wp,d0ij,rij2)
@@ -597,12 +597,12 @@ pure subroutine outofplane(self, xyz, n, hess, at, force_constant, kd, lcutoff)
                rik2=dot_product(rik,rik)
                ril2=dot_product(ril,ril)
 
-                cosfi2=dot_product(rij,rik)/sqrt(rij2*rik2)
-                if (abs(abs(cosfi2)-1.0_wp) < 1.0e-1_wp) cycle outofplane_lAt
-                cosfi3=dot_product(rij,ril)/sqrt(rij2*ril2)
-                if (abs(abs(cosfi3)-1.0_wp) < 1.0e-1_wp) cycle outofplane_lAt
-                cosfi4=dot_product(rik,ril)/sqrt(rik2*ril2)
-                if (abs(abs(cosfi4)-1.0_wp) < 1.0e-1_wp) cycle outofplane_lAt
+               cosfi2=dot_product(rij,rik)/sqrt(rij2*rik2)
+               if (abs(abs(cosfi2)-1.0_wp) < 1.0e-1_wp) cycle outofplane_lAt
+               cosfi3=dot_product(rij,ril)/sqrt(rij2*ril2)
+               if (abs(abs(cosfi3)-1.0_wp) < 1.0e-1_wp) cycle outofplane_lAt
+               cosfi4=dot_product(rik,ril)/sqrt(rik2*ril2)
+               if (abs(abs(cosfi4)-1.0_wp) < 1.0e-1_wp) cycle outofplane_lAt
 
                gij = fk_lindh(aij,rij0,rij2) &
                   + 0.5_wp*outofplane_kd * fk_vdw(4.0_wp,d0ij,rij2)
@@ -615,8 +615,8 @@ pure subroutine outofplane(self, xyz, n, hess, at, force_constant, kd, lcutoff)
 
                !tij = max(tij,10*min_fk)
 
-                call outofp2(txyz,tau,c)
-                if (abs(tau) > 45.0_wp*(pi/180.0_wp)) cycle outofplane_lAt
+               call outofp2(txyz,tau,c)
+               if (abs(tau) > 45.0_wp*(pi/180.0_wp)) cycle outofplane_lAt
 
                si = c(:,4)
                sj = c(:,1)

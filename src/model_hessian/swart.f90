@@ -307,10 +307,10 @@ pure subroutine torsion(self, xyz, n, hess, at, force_constant, kd, lcutoff)
                rjk2=dot_product(rjk,rjk)
                rkl2=dot_product(rkl,rkl)
 
-                cosfi2=dot_product(rij,rjk)/sqrt(rij2*rjk2)
-                if (abs(cosfi2) > cosfi_max) cycle torsion_lAt
-                cosfi3=dot_product(rkl,rjk)/sqrt(rkl2*rjk2)
-                if (abs(cosfi3) > cosfi_max) cycle torsion_lAt
+               cosfi2=dot_product(rij,rjk)/sqrt(rij2*rjk2)
+               if (abs(cosfi2) > cosfi_max) cycle torsion_lAt
+               cosfi3=dot_product(rkl,rjk)/sqrt(rkl2*rjk2)
+               if (abs(cosfi3) > cosfi_max) cycle torsion_lAt
 
                gij = fk_swart(1.0_wp,rij0,rij2) &
                   + 0.5_wp*kd * fk_vdw(5.0_wp,d0ij,rij2)
@@ -321,11 +321,11 @@ pure subroutine torsion(self, xyz, n, hess, at, force_constant, kd, lcutoff)
 
                tij = force_constant * gij*gjk*gkl
 
-                !tij = max(tij,10*min_fk)
+               !tij = max(tij,10*min_fk)
 
-                c = bmat_torsion(txyz)
-                brow12 = [c(:,1), c(:,2), c(:,3), c(:,4)]
-                call bmat_accum_packed(n, hess, [i, j, k, l], brow12, tij)
+               c = bmat_torsion(txyz)
+               brow12 = [c(:,1), c(:,2), c(:,3), c(:,4)]
+               call bmat_accum_packed(n, hess, [i, j, k, l], brow12, tij)
 
              end do torsion_lAt
           end do torsion_iAt
@@ -393,12 +393,12 @@ pure subroutine outofplane(self, xyz, n, hess, at, force_constant, kd, lcutoff)
                rik2=dot_product(rik,rik)
                ril2=dot_product(ril,ril)
 
-                cosfi2=dot_product(rij,rik)/sqrt(rij2*rik2)
-                if (abs(abs(cosfi2)-1.0_wp) < 1.0e-1_wp) cycle outofplane_lAt
-                cosfi3=dot_product(rij,ril)/sqrt(rij2*ril2)
-                if (abs(abs(cosfi3)-1.0_wp) < 1.0e-1_wp) cycle outofplane_lAt
-                cosfi4=dot_product(rik,ril)/sqrt(rik2*ril2)
-                if (abs(abs(cosfi4)-1.0_wp) < 1.0e-1_wp) cycle outofplane_lAt
+               cosfi2=dot_product(rij,rik)/sqrt(rij2*rik2)
+               if (abs(abs(cosfi2)-1.0_wp) < 1.0e-1_wp) cycle outofplane_lAt
+               cosfi3=dot_product(rij,ril)/sqrt(rij2*ril2)
+               if (abs(abs(cosfi3)-1.0_wp) < 1.0e-1_wp) cycle outofplane_lAt
+               cosfi4=dot_product(rik,ril)/sqrt(rik2*ril2)
+               if (abs(abs(cosfi4)-1.0_wp) < 1.0e-1_wp) cycle outofplane_lAt
 
                gij = fk_swart(1.0_wp,rij0,rij2) &
                   + 0.5_wp*kd * fk_vdw(5.0_wp,d0ij,rij2)
@@ -411,8 +411,8 @@ pure subroutine outofplane(self, xyz, n, hess, at, force_constant, kd, lcutoff)
 
                !tij = max(tij,10*min_fk)
 
-                 tau = oop_angle(txyz)
-                 if (abs(tau) > 45.0_wp*(pi/180.0_wp)) cycle outofplane_lAt
+               tau = oop_angle(txyz)
+               if (abs(tau) > 45.0_wp*(pi/180.0_wp)) cycle outofplane_lAt
 
                 c = bmat_outofplane(txyz)
                 brow12 = [c(:,4), c(:,1), c(:,2), c(:,3)]
