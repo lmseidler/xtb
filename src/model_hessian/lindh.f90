@@ -422,7 +422,7 @@ subroutine torsion(self, xyz, n, hess, at, force_constant, kd, lcutoff)
    type(TLindhParameters) :: parameters
    real(wp) :: aav(3,3), rav(3,3), dav(3,3)
 !  allow only angles in the range of 35-145
-   real(wp),parameter :: a35 = (35.0d0/180.d0)* pi
+   real(wp),parameter :: a35 = (35.0_wp/180.0_wp)* pi
    real(wp),parameter :: cosfi_max=cos(a35)
    real(wp) :: txyz(3,4),c(3,4)
    real(wp) :: rij(3),rij0,aij,rij2,d0ij,gij
@@ -616,7 +616,7 @@ pure subroutine outofplane(self, xyz, n, hess, at, force_constant, kd, lcutoff)
                !tij = max(tij,10*min_fk)
 
                 call outofp2(txyz,tau,c)
-                if (abs(tau) > 45.0d0*(pi/180.d0)) cycle outofplane_lAt
+                if (abs(tau) > 45.0_wp*(pi/180.0_wp)) cycle outofplane_lAt
 
                si = c(:,4)
                sj = c(:,1)
