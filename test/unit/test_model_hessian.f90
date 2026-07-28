@@ -15,16 +15,16 @@
 ! You should have received a copy of the GNU Lesser General Public License
 ! along with xtb.  If not, see <https://www.gnu.org/licenses/>.
 
-!> Behavior-lock tests for model Hessian variants.
+!> Behavior-lock tests for model Hessian variants
 !>
 !> Reference data lives in `test/unit/fixtures/model_hessian/*.dat` as one
-!> packed Hessian value per line. With GEN_REFS=1, the tests write files from
+!> packed Hessian value per line. With GEN_REFS = 1, the tests write files from
 !> current code output and PASS. Otherwise they compare element-wise against
-!> stored references.
+!> stored references
 !>
-!> Tests may encode current buggy behavior (rkl2=sum(rjk**2) in torsion,
-!> outofp2(xyz,...) in out-of-plane) — marked as behavior-lock until
-!> Phase 3 fixes them, at which point references are regenerated.
+!> Tests may encode current buggy behavior such as rkl2=sum(rjk**2) in torsion
+!> and otherwise lock the current implementation until deliberate changes
+!> regenerate the references
 module test_model_hessian
    use testdrive, only : new_unittest, unittest_type, error_type, check
    use xtb_mctc_accuracy, only : wp
@@ -97,8 +97,8 @@ function oop_modh() result(modh)
       & ko=0.16_wp, kd=0.0_wp, kq=0.0_wp, rcut=70.0_wp, s6=20.0_wp)
 end function oop_modh
 
-!> Generic model Hessian test driver.
-!> Computes Hessian, compares against reference.
+!> Generic model Hessian test driver
+!> Computes Hessian, compares against reference
 subroutine test_mh(error, molname, variant, modh, label)
    type(error_type), allocatable, intent(out) :: error
    character(len=*), intent(in) :: molname
@@ -131,7 +131,7 @@ subroutine compute_mh_packed(mol, variant, modh, hess_packed)
 end subroutine compute_mh_packed
 
 
-!> Allocate model Hessian implementation for a test variant.
+!> Allocate model Hessian implementation for a test variant
 subroutine new_model_hessian(variant, model_hessian)
    integer, intent(in) :: variant
    class(TModelHessian), allocatable, intent(out) :: model_hessian
@@ -147,7 +147,7 @@ subroutine new_model_hessian(variant, model_hessian)
 end subroutine new_model_hessian
 
 
-!> Check packed and dense generic model Hessian interfaces are equivalent.
+!> Check packed and dense generic model Hessian interfaces are equivalent
 subroutine test_model_hessian_dense(error)
    type(error_type), allocatable, intent(out) :: error
 
@@ -179,7 +179,7 @@ subroutine test_model_hessian_dense(error)
 end subroutine test_model_hessian_dense
 
 
-!> Check model implementations dispatch the additive charge contribution.
+!> Check model implementations dispatch the additive charge contribution
 subroutine test_model_hessian_charge(error)
    type(error_type), allocatable, intent(out) :: error
 
@@ -214,7 +214,7 @@ subroutine test_model_hessian_charge(error)
 end subroutine test_model_hessian_charge
 
 
-!> Check EEQ utility adds to, rather than replaces, packed Hessian values.
+!> Check EEQ utility adds to, rather than replaces, packed Hessian values
 subroutine test_eeq_addition(error)
    type(error_type), allocatable, intent(out) :: error
 
@@ -242,7 +242,7 @@ subroutine test_eeq_addition(error)
 end subroutine test_eeq_addition
 
 
-!> Path to reference file for a given label.
+!> Path to reference file for a given label
 function ref_path(label) result(path)
    character(len=*), intent(in) :: label
 
@@ -259,7 +259,7 @@ function ref_path(label) result(path)
 end function ref_path
 
 
-!> True when GEN_REFS is set to 1 (force regeneration of files).
+!> True when GEN_REFS is set to 1 (force regeneration of files)
 function gen_refs() result(mode)
    logical :: mode
    character(len=8) :: buf
@@ -269,7 +269,7 @@ function gen_refs() result(mode)
 end function gen_refs
 
 
-!> Write packed Hessian as one value per line to a file.
+!> Write packed Hessian as one value per line to a file
 subroutine write_ref(path, packed)
    character(len=*), intent(in) :: path
    real(wp), intent(in) :: packed(:)
@@ -284,7 +284,7 @@ subroutine write_ref(path, packed)
 end subroutine write_ref
 
 
-!> Read reference packed Hessian from file. Returns .false. on read error.
+!> Read reference packed Hessian from file, returning .false. on read error
 function read_ref(path, packed) result(ok)
    character(len=*), intent(in) :: path
    real(wp), allocatable, intent(out) :: packed(:)
@@ -317,9 +317,9 @@ function read_ref(path, packed) result(ok)
 end function read_ref
 
 
-!> Compare packed Hessian against stored reference.
-!> If GEN_REFS=1, writes reference from current output.
-!> On mismatch, reports the first differing packed element.
+!> Compare packed Hessian against stored reference
+!> If GEN_REFS = 1, writes reference from current output
+!> On mismatch, reports the first differing packed element
 subroutine compare_or_write_ref(error, label, packed)
    type(error_type), allocatable, intent(out) :: error
    character(len=*), intent(in) :: label

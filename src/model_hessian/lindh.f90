@@ -29,11 +29,12 @@ module xtb_modelhessian_lindh
    use xtb_mctc_accuracy, only : wp
    use xtb_mctc_constants, only : pi
    use xtb_chargemodel, only : new_charge_model_2019
-   use xtb_bmatrix, only : bmat_bond, bmat_torsion, bmat_accum_packed, &
-      & bmat_accum_pairblock_packed
+   use xtb_bmatrix, only : bmat_bond, bmat_torsion, bmat_outofplane, &
+      & oop_angle, bmat_accum_packed, bmat_accum_pairblock_packed
    use xtb_modelhessian_type, only : TModelHessian
-   use xtb_modelhessian_eeq, only : c6, vander, itabrow, rcutoff, outofp2, &
-      & getvdw_hess, fk_lindh, fk_vdw, add_eeq_hessian
+   use xtb_modelhessian_shared, only : c6, vander, itabrow, rcutoff, &
+      & getvdw_hess, fk_vdw
+   use xtb_modelhessian_eeq, only : add_eeq_hessian
    use xtb_type_param, only : chrg_parameter
    implicit none (type, external)
 
@@ -244,8 +245,6 @@ pure subroutine stretch(self, xyz, n, hess, at, kr, kd, s6, lcutoff, rcut)
          gmm = kr*fk_lindh(alpha,r0,rij2) &
             + kr*kd * fk_vdw(4.0_wp,d0,rij2)
 
-         !gmm = max(gmm,min_fk)
-
          ! pure stretch: gmm * B^T B
          bmat6 = bmat_bond(vec)
          call bmat_accum_packed(n, hess, [i, j], bmat6, gmm)
@@ -345,8 +344,6 @@ pure subroutine bend(self, xyz, n, hess, at, force_constant, kd, lcutoff)
             else
                rl=sqrt(rl2)
             end if
-
-            !gij = max(gij,min_fk)
 
             if ((rmj > rzero) .and. (rmi > rzero) .and. (rrij > rzero)) then
                sinphi=rl/(rmj*rmi)
@@ -506,8 +503,6 @@ subroutine torsion(self, xyz, n, hess, at, force_constant, kd, lcutoff)
 
                tij = force_constant * gij*gjk*gkl
 
-               !tij = max(tij,10*min_fk)
-
                c = bmat_torsion(txyz)
                si = c(:,1)
                sj = c(:,2)
@@ -605,24 +600,23 @@ pure subroutine outofplane(self, xyz, n, hess, at, force_constant, kd, lcutoff)
                cosfi4=dot_product(rik,ril)/sqrt(rik2*ril2)
                if (abs(abs(cosfi4)-1.0_wp) < 1.0e-1_wp) cycle outofplane_lAt
 
-               gij = fk_lindh(aij,rij0,rij2) &
-                  + 0.5_wp*outofplane_kd * fk_vdw(4.0_wp,d0ij,rij2)
-               gik = fk_lindh(aik,rik0,rik2) &
-                  + 0.5_wp*outofplane_kd * fk_vdw(4.0_wp,d0ik,rik2)
-               gil = fk_lindh(ail,ril0,ril2) &
-                  + 0.5_wp*outofplane_kd * fk_vdw(4.0_wp,d0il,ril2)
+               gij = fk_lindh(aij, rij0, rij2) &
+                  + 0.5_wp * outofplane_kd * fk_vdw(4.0_wp, d0ij, rij2)
+               gik = fk_lindh(aik, rik0, rik2) &
+                  + 0.5_wp * outofplane_kd * fk_vdw(4.0_wp, d0ik, rik2)
+               gil = fk_lindh(ail, ril0, ril2) &
+                  + 0.5_wp * outofplane_kd * fk_vdw(4.0_wp, d0il, ril2)
 
-               tij = force_constant * gij*gik*gil
+               tij = force_constant * gij * gik * gil
 
-               !tij = max(tij,10*min_fk)
+               tau = oop_angle(txyz)
+               if (abs(tau) > 45.0_wp * (pi/180.0_wp)) cycle outofplane_lAt
 
-               call outofp2(txyz,tau,c)
-               if (abs(tau) > 45.0_wp*(pi/180.0_wp)) cycle outofplane_lAt
-
-               si = c(:,4)
-               sj = c(:,1)
-               sk = c(:,2)
-               sl = c(:,3)
+               c = bmat_outofplane(txyz)
+               si = c(:, 4)
+               sj = c(:, 1)
+               sk = c(:, 2)
+               sl = c(:, 3)
                brow12 = [si, sj, sk, sl]
                call bmat_accum_packed(n, hess, [i, j, k, l], brow12, tij)
 
@@ -632,5 +626,15 @@ pure subroutine outofplane(self, xyz, n, hess, at, force_constant, kd, lcutoff)
    end do outofplane_iAt
 
 end subroutine outofplane
+
+!> Evaluate the Lindh force-constant decay factor
+pure elemental function fk_lindh(alpha, r0, r2) result(gmm)
+   !> Decay parameter, reference distance, and squared pair distance
+   real(wp), intent(in) :: alpha, r0, r2
+
+   real(wp) :: gmm
+
+   gmm = exp(alpha*(r0**2 - r2))
+end function fk_lindh
 
 end module xtb_modelhessian_lindh

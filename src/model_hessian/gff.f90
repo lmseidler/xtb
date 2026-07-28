@@ -39,7 +39,7 @@ contains
       use xtb_gfnff_neighbor, only : TNeigh
       use xtb_type_timer
       use xtb_bmatrix, only : bmat_torsion
-      use xtb_modelhessian_eeq, only : itabrow
+      use xtb_modelhessian_shared, only : itabrow
       Implicit Integer (i-n)
       Implicit Real*8 (a-h, o-z)
       type(TGFFData), intent(in) :: param

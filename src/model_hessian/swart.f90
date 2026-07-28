@@ -33,8 +33,8 @@ module xtb_modelhessian_swart
    use xtb_bmatrix, only : bmat_bond, bmat_angle, bmat_linbend, bmat_torsion, &
       & bmat_outofplane, oop_angle, bmat_accum_packed, bmat_accum_pairblock_packed
    use xtb_modelhessian_type, only : TModelHessian
-   use xtb_modelhessian_eeq, only : c6, vander, rcutoff, getvdw_hess, &
-      & fk_swart, fk_vdw, add_eeq_hessian
+   use xtb_modelhessian_shared, only : c6, vander, rcutoff, getvdw_hess, fk_vdw
+   use xtb_modelhessian_eeq, only : add_eeq_hessian
    use xtb_type_param, only : chrg_parameter
    implicit none (type, external)
 
@@ -137,8 +137,6 @@ pure subroutine stretch(self, xyz, n, hess, at, kr, kd, s6, lcutoff, rcut)
          gmm = kr*fk_swart(1.0_wp,  r0,rij2) &
             + kr*kd * fk_vdw(5.0_wp,d0,rij2)
 
-         !gmm = max(gmm,min_fk)
-
          ! pure stretch: gmm * B^T B
          bmat6 = bmat_bond(rij)
          call bmat_accum_packed(n, hess, [i, j], bmat6, gmm)
@@ -215,8 +213,6 @@ pure subroutine bend(self, xyz, n, hess, at, force_constant, kd, lcutoff)
             else
                rl = sqrt(rl2)
             end if
-
-            !gij = max(gij,min_fk)
 
             if ((rmj > rzero) .and. (rmi > rzero)) then
                sinphi = rl / (rmj * rmi)
@@ -322,8 +318,6 @@ pure subroutine torsion(self, xyz, n, hess, at, force_constant, kd, lcutoff)
 
                tij = force_constant * gij*gjk*gkl
 
-               !tij = max(tij,10*min_fk)
-
                c = bmat_torsion(txyz)
                brow12 = [c(:,1), c(:,2), c(:,3), c(:,4)]
                call bmat_accum_packed(n, hess, [i, j, k, l], brow12, tij)
@@ -410,8 +404,6 @@ pure subroutine outofplane(self, xyz, n, hess, at, force_constant, kd, lcutoff)
 
                tij = force_constant * gij*gik*gil
 
-               !tij = max(tij,10*min_fk)
-
                tau = oop_angle(txyz)
                if (abs(tau) > 45.0_wp*(pi/180.0_wp)) cycle outofplane_lAt
 
@@ -425,5 +417,15 @@ pure subroutine outofplane(self, xyz, n, hess, at, force_constant, kd, lcutoff)
     end do outofplane_iAt
 
 end subroutine outofplane
+
+!> Evaluate the Swart force-constant decay factor
+pure elemental function fk_swart(alpha, r0, r2) result(gmm)
+   !> Decay parameter, reference distance, and squared pair distance
+   real(wp), intent(in) :: alpha, r0, r2
+
+   real(wp) :: gmm
+
+   gmm = exp(-alpha*(sqrt(r2)/r0 - 1.0_wp))
+end function fk_swart
 
 end module xtb_modelhessian_swart
