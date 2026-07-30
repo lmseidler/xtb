@@ -1227,7 +1227,7 @@ end subroutine prdispl
 !> generate model Hessian
 subroutine modhes(env, calc, modh, natoms, xyz, chg, Hess, pr)
    use xtb_type_setvar
-   use xtb_modelhessian_gff, only : mh_gff
+   use xtb_modelhessian_gff, only : newGFFModelHessian
    use xtb_modelhessian_type, only : TModelHessian
    use xtb_modelhessian_lindh, only : TLindhModelHessian, TLindhD2ModelHessian
    use xtb_modelhessian_swart, only : TSwartModelHessian
@@ -1248,7 +1248,7 @@ subroutine modhes(env, calc, modh, natoms, xyz, chg, Hess, pr)
    type(TEnvironment), intent(inout) :: env
 
    !> Calculator
-   class(TCalculator), intent(inout) :: calc
+   class(TCalculator), intent(inout), target :: calc
 
    !> Model Hessian implementation
    class(TModelHessian), allocatable :: model_hessian
@@ -1294,8 +1294,9 @@ subroutine modhes(env, calc, modh, natoms, xyz, chg, Hess, pr)
          call env%error("internal error in model hessian!", source)
          return
       case(p_modh_old, p_modh_gff)
-         if (pr) write(env%unit,'(a)') "Using GFN-FF Lindh-Hessian"
-         call mh_gff(xyz, natoms, Hess, chg, modh%s6, calc%param, calc%topo, calc%neigh)
+         if (pr) write(env%unit,'(a)') "Using GFN-FF Model Hessian"
+         allocate(model_hessian, source=newGFFModelHessian( &
+            & calc%param, calc%topo, calc%neigh))
       case(p_modh_lindh_d2)
          if (pr) write(env%unit,'(a)') "Using Lindh-Hessian"
          allocate(TLindhD2ModelHessian :: model_hessian)
