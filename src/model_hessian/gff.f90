@@ -26,33 +26,14 @@ module xtb_modelhessian_gff
    use xtb_gfnff_neighbor, only : TNeigh
    use xtb_gfnff_topology, only : TGFFTopology
    use xtb_modelhessian_shared, only : itabrow
+   use xtb_param_model_hessian, only : rav => legacy_rav, &
+      & aav => legacy_aav, c6 => gff_c6, gff_stretch_constant, &
+      & gff_bend_constant, gff_torsion_constant, &
+      & distance_threshold => gff_distance_threshold
    use xtb_modelhessian_type, only : TModelHessian
+   use xtb_type_environment, only : TEnvironment
    implicit none(type, external)
    private
-
-   real(wp), parameter :: rav(3, 3) = reshape([ &
-      1.3500_wp, 2.1000_wp, 2.5300_wp, &
-      2.1000_wp, 2.8700_wp, 3.4000_wp, &
-      2.5300_wp, 3.4000_wp, 3.4000_wp], [3, 3])
-   real(wp), parameter :: aav(3, 3) = reshape([ &
-      1.0000_wp, 0.3949_wp, 0.3949_wp, &
-      0.3949_wp, 0.2800_wp, 0.2800_wp, &
-      0.3949_wp, 0.2800_wp, 0.2800_wp], [3, 3])
-   real(wp), parameter :: gff_stretch_constant = 0.4500_wp
-   real(wp), parameter :: gff_bend_constant = 0.3000_wp
-   real(wp), parameter :: gff_torsion_constant = 0.7500_wp
-   real(wp), parameter :: distance_threshold = 1.0e-10_wp
-   real(wp), parameter :: c6(55) = [ &
-      0.14_wp, 0.08_wp, 1.61_wp, 1.61_wp, 3.13_wp, 1.75_wp, 1.23_wp, &
-      0.70_wp, 0.75_wp, 0.63_wp, 5.71_wp, 5.71_wp, 10.79_wp, 9.23_wp, &
-      7.84_wp, 5.57_wp, 5.07_wp, 4.61_wp, &
-      10.80_wp, 10.80_wp, 10.80_wp, 10.80_wp, 10.80_wp, 10.80_wp, &
-      10.80_wp, 10.80_wp, 10.80_wp, 10.80_wp, 10.80_wp, 10.80_wp, &
-      16.99_wp, 17.10_wp, 16.37_wp, 12.64_wp, 12.47_wp, 12.01_wp, &
-      24.67_wp, 24.67_wp, 24.67_wp, 24.67_wp, 24.67_wp, 24.67_wp, &
-      24.67_wp, 24.67_wp, 24.67_wp, 24.67_wp, 24.67_wp, 24.67_wp, &
-      37.32_wp, 38.71_wp, 38.44_wp, 31.74_wp, &
-      31.50_wp, 29.99_wp, 40.00_wp]
 
    !> GFN-FF model Hessian using calculator-owned topology data
    type, public, extends(TModelHessian) :: TGFFModelHessian
@@ -174,7 +155,7 @@ subroutine bend(self, xyz, n, hess, at, force_constant, kd, lcutoff)
 
       gij = gff_bend_constant * exp( &
          aav(mr, ir) * rav(mr, ir)**2 + aav(mr, jr) * rav(mr, jr)**2 &
-         -aav(mr, ir) * rmi2 - aav(mr, jr) * rmj2)
+         - aav(mr, ir) * rmi2 - aav(mr, jr) * rmj2)
       cross_vec = crossProd(vec_mi, vec_mj)
       sinphi = norm2(cross_vec) / (rmi*rmj)
       if (sinphi > distance_threshold) then
@@ -223,8 +204,8 @@ subroutine torsion(self, xyz, n, hess, at, force_constant, kd, lcutoff)
       rkl = xyz(:, k) - xyz(:, l)
       tij = gff_torsion_constant * exp( &
          aav(ir, jr) * (rav(ir, jr)**2 - dot_product(rij, rij)) &
-         +aav(jr, kr) * (rav(jr, kr)**2 - dot_product(rjk, rjk)) &
-         +aav(kr, lr) * (rav(kr, lr)**2 - dot_product(rkl, rkl)))
+         + aav(jr, kr) * (rav(jr, kr)**2 - dot_product(rjk, rjk)) &
+         + aav(kr, lr) * (rav(kr, lr)**2 - dot_product(rkl, rkl)))
       bmat = bmat_torsion(torsion_xyz)
       brow12 = [bmat(:, 1), bmat(:, 2), bmat(:, 3), bmat(:, 4)]
       call bmat_accum_packed(n, hess, [i, j, k, l], brow12, tij)
@@ -244,8 +225,9 @@ subroutine outofplane(self, xyz, n, hess, at, force_constant, kd, lcutoff)
 end subroutine outofplane
 
 !> GFN-FF charge contributions are included in the pair term
-subroutine add_charge(self, xyz, n, hess, at, kq)
+subroutine add_charge(self, env, xyz, n, hess, at, kq)
    class(TGFFModelHessian), intent(in) :: self
+   type(TEnvironment), intent(inout) :: env
    integer, intent(in) :: n
    real(wp), intent(in) :: xyz(3, n)
    real(wp), intent(inout) :: hess((3*n)*(3*n + 1)/2)
@@ -310,12 +292,12 @@ pure subroutine getqqxx(dx, qq, cdisp, r, r2, r3, damped_r, r0_squared, d2)
    damped_r2 = damped_r**2
    dx2 = dx**2
    d2 = qq * (2.0_wp*dx2/(r2*damped_r*damped_r2) &
-      +dx2 / (r3*damped_r2) - 1.0_wp / (r*damped_r2))
+      + dx2 / (r3*damped_r2) - 1.0_wp / (r*damped_r2))
    r6 = r3 * r3
    r8 = r6 * r2
    denominator = r0_squared**3 + r6
    d2 = d2 + cdisp * (dx2*72.0_wp*r8/denominator**3 &
-      -dx2 * 24.0_wp * r2 / denominator**2 - 6.0_wp * r2 * r2 / denominator**2)
+      - dx2 * 24.0_wp * r2 / denominator**2 - 6.0_wp * r2 * r2 / denominator**2)
 end subroutine getqqxx
 
 !> Evaluate a mixed pair-Hessian element
@@ -331,7 +313,7 @@ pure subroutine getqqxy(dx, dy, qq, cdisp, r, r2, r3, damped_r, r0_squared, d2)
    r8 = r6 * r2
    denominator = r0_squared**3 + r6
    d2 = d2 + cdisp * (dx*dy*72.0_wp*r8/denominator**3 &
-      -dx * dy * 24.0_wp * r2 / denominator**2)
+      - dx * dy * 24.0_wp * r2 / denominator**2)
 end subroutine getqqxy
 
 end module xtb_modelhessian_gff

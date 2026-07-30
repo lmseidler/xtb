@@ -323,7 +323,7 @@ subroutine hessian_odlr(self, env, mol0, chk0, step, hess, final_err, dipgrad, p
       type(modhess_setvar) :: modh
       modh = modhess_setvar(kr=0.4000_wp, kf=0.1300_wp, kt=0.0075_wp, &
          & ko=0.16_wp, kd=0.0_wp, kq=0.0_wp, rcut=70.0_wp, s6=20.0_wp)
-      call model_hessian%compute(mol%xyz, mol%n, h0, mol%at, modh)
+      call model_hessian%compute(env, mol%xyz, mol%n, h0, mol%at, modh)
    end block
    call env%check(terminate_run)
    if (terminate_run) then

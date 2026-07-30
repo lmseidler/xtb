@@ -24,16 +24,11 @@ module xtb_modelhessian_eeq
    use xtb_mctc_constants, only : pi
    use xtb_mctc_lapack_trf, only : lapack_sytrf
    use xtb_mctc_lapack_tri, only : lapack_sytri
+   use xtb_type_environment, only : TEnvironment
    use xtb_type_param, only : chrg_parameter
    implicit none(type, external)
 
    interface
-      subroutine raise(mode, message)
-         implicit none(type, external)
-         character, intent(in) :: mode
-         character(len = *), intent(in) :: message
-      end subroutine raise
-
       subroutine dsysv(uplo, n, nrhs, a, lda, ipiv, b, ldb, work, lwork, info)
          import :: wp
          implicit none(type, external)
@@ -57,7 +52,9 @@ module xtb_modelhessian_eeq
 contains
 
 !> Add the EEQ contribution to an existing packed Hessian
-subroutine add_eeq_hessian(n, at, xyz, chrg, chrgeq, kq, hess)
+subroutine add_eeq_hessian(env, n, at, xyz, chrg, chrgeq, kq, hess)
+   !> Calculation environment
+   type(TEnvironment), intent(inout) :: env
    !> Number of atoms
    integer, intent(in) :: n
    !> Atomic numbers
@@ -72,6 +69,8 @@ subroutine add_eeq_hessian(n, at, xyz, chrg, chrgeq, kq, hess)
    real(wp), intent(in) :: kq
    !> Packed Hessian updated in place
    real(wp), intent(inout) :: hess((3*n)*(3*n + 1)/2)
+
+   character(len=*), parameter :: source = "model_hessian_eeq"
 
    !  √π
    real(wp), parameter :: sqrtpi = sqrt(pi)
@@ -160,14 +159,22 @@ subroutine add_eeq_hessian(n, at, xyz, chrg, chrgeq, kq, hess)
 
    ! assume work space query, set best value to test after first dsysv call
    call dsysv("u", m, 1, Atmp, m, ipiv, Xtmp, m, test, -1, info)
-   lwork = int(test(1))
+   if (info /= 0) then
+      call env%error("DSYSV workspace query failed for the EEQ matrix", source)
+      return
+   end if
+   lwork = max(1, int(test(1)))
    allocate( work(lwork), source = 0.0_wp )
 
    call dsysv("u", m, 1, Atmp, m, ipiv, Xtmp, m, work, lwork, info)
-   if (info > 0) call raise("E", "(goedecker_solve) DSYSV failed")
+   if (info /= 0) then
+      call env%error("DSYSV failed while solving EEQ charges", source)
+      return
+   end if
 
    if (abs(sum(Xtmp(:n)) - chrg) > 1.0e-6_wp) then
-     call raise("E", "(goedecker_solve) charge constrain error")
+      call env%error("EEQ charge constraint was not satisfied", source)
+      return
    end if
    !print'(3f20.14)',Xtmp
 
@@ -212,6 +219,10 @@ subroutine add_eeq_hessian(n, at, xyz, chrg, chrgeq, kq, hess)
 
    ! assume work space query, set best value to test after first dsytrf call
    call lapack_sytrf("L", m, Ainv, m, ipiv, test, -1, info)
+   if (info /= 0) then
+      call env%error("DSYTRF workspace query failed for the EEQ matrix", source)
+      return
+   end if
    if (int(test(1)) > lwork) then
       deallocate(work)
       lwork = int(test(1))
@@ -220,15 +231,17 @@ subroutine add_eeq_hessian(n, at, xyz, chrg, chrgeq, kq, hess)
 
    ! Bunch-Kaufman factorization A = L*D*L**T
    call lapack_sytrf("L", m, Ainv, m, ipiv, work, lwork, info)
-   if (info > 0) then
-      call raise("E", "(goedecker_inversion) DSYTRF failed")
+   if (info /= 0) then
+      call env%error("DSYTRF failed while factorizing the EEQ matrix", source)
+      return
    end if
 
    ! A⁻¹ from factorized L matrix, save lower part of A⁻¹ in Ainv matrix
    ! Ainv matrix is overwritten with lower triangular part of A⁻¹
    call lapack_sytri("L", m, Ainv, m, ipiv, work, info)
-   if (info > 0) then
-      call raise("E", "(goedecker_inversion) DSYTRI failed")
+   if (info /= 0) then
+      call env%error("DSYTRI failed while inverting the EEQ matrix", source)
+      return
    end if
 
    ! symmetrizes A⁻¹ matrix from lower triangular part of inverse matrix

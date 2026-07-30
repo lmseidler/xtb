@@ -109,6 +109,7 @@ srcs += files(
   'model_hessian/type.f90',
   'model_hessian/shared.f90',
   'model_hessian/eeq.f90',
+  'model_hessian/internal.f90',
   'model_hessian/gff.f90',
   'model_hessian/lindh.f90',
   'model_hessian/swart.f90',

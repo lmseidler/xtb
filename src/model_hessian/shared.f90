@@ -19,56 +19,14 @@
 !> Shared data and utilities for model Hessian implementations
 module xtb_modelhessian_shared
    use xtb_mctc_accuracy, only : wp
-   use xtb_mctc_convert, only : aatoau
+   use xtb_param_model_hessian, only : d2_damping
    implicit none(type, external)
 
    private
-   public :: c6
-   public :: vander
    public :: rcutoff
    public :: itabrow
    public :: getvdw_hess
    public :: fk_vdw
-
-   ! van der Waals radii used in the D2 model
-   real(wp), parameter :: vander(86) = aatoau * [ &
-      0.91_wp, 0.92_wp, & ! H, He
-      0.75_wp, 1.28_wp, 1.35_wp, 1.32_wp, 1.27_wp, 1.22_wp, 1.17_wp, 1.13_wp, & ! Li-Ne
-      1.04_wp, 1.24_wp, 1.49_wp, 1.56_wp, 1.55_wp, 1.53_wp, 1.49_wp, 1.45_wp, & ! Na-Ar
-      1.35_wp, 1.34_wp, & ! K, Ca
-      1.42_wp, 1.42_wp, 1.42_wp, 1.42_wp, 1.42_wp, & ! Sc-Zn
-      1.42_wp, 1.42_wp, 1.42_wp, 1.42_wp, 1.42_wp, &
-      1.50_wp, 1.57_wp, 1.60_wp, 1.61_wp, 1.59_wp, 1.57_wp, & ! Ga-Kr
-      1.48_wp, 1.46_wp, & ! Rb, Sr
-      1.49_wp, 1.49_wp, 1.49_wp, 1.49_wp, 1.49_wp, & ! Y-Cd
-      1.49_wp, 1.49_wp, 1.49_wp, 1.49_wp, 1.49_wp, &
-      1.52_wp, 1.64_wp, 1.71_wp, 1.72_wp, 1.72_wp, 1.71_wp, & ! In-Xe
-      2.00_wp, 2.00_wp, &
-      2.00_wp, 2.00_wp, 2.00_wp, 2.00_wp, 2.00_wp, 2.00_wp, 2.00_wp, & ! La-Yb
-      2.00_wp, 2.00_wp, 2.00_wp, 2.00_wp, 2.00_wp, 2.00_wp, 2.00_wp, &
-      2.00_wp, 2.00_wp, 2.00_wp, 2.00_wp, 2.00_wp, & ! Lu-Hg
-      2.00_wp, 2.00_wp, 2.00_wp, 2.00_wp, 2.00_wp, &
-      2.00_wp, 2.00_wp, 2.00_wp, 2.00_wp, 2.00_wp, 2.00_wp] ! Tl-Rn
-
-   ! C6 coefficients used in the D2 model
-   real(wp), parameter :: c6(86) = [ &
-      0.14_wp, 0.08_wp, & ! H, He
-      1.61_wp, 1.61_wp, 3.13_wp, 1.75_wp, 1.23_wp, 0.70_wp, 0.75_wp, 0.63_wp, &
-      5.71_wp, 5.71_wp, 10.79_wp, 9.23_wp, 7.84_wp, 5.57_wp, 5.07_wp, 4.61_wp, &
-      10.80_wp, 10.80_wp, & ! K, Ca
-      10.80_wp, 10.80_wp, 10.80_wp, 10.80_wp, 10.80_wp, & ! Sc-Zn
-      10.80_wp, 10.80_wp, 10.80_wp, 10.80_wp, 10.80_wp, &
-      16.99_wp, 17.10_wp, 16.37_wp, 12.64_wp, 12.47_wp, 12.01_wp, & ! Ga-Kr
-      24.67_wp, 24.67_wp, & ! Rb, Sr
-      24.67_wp, 24.67_wp, 24.67_wp, 24.67_wp, 24.67_wp, & ! Y-Cd
-      24.67_wp, 24.67_wp, 24.67_wp, 24.67_wp, 24.67_wp, &
-      37.32_wp, 38.71_wp, 38.44_wp, 31.74_wp, 31.50_wp, 29.99_wp, & ! In-Xe
-      50.00_wp, 50.00_wp, & ! Cs, Ba
-      50.00_wp, 50.00_wp, 50.00_wp, 50.00_wp, 50.00_wp, 50.00_wp, 50.00_wp, & ! La-Yb
-      50.00_wp, 50.00_wp, 50.00_wp, 50.00_wp, 50.00_wp, 50.00_wp, 50.00_wp, &
-      50.00_wp, 50.00_wp, 50.00_wp, 50.00_wp, 50.00_wp, & ! Lu-Hg
-      50.00_wp, 50.00_wp, 50.00_wp, 50.00_wp, 50.00_wp, &
-      50.00_wp, 50.00_wp, 50.00_wp, 50.00_wp, 50.00_wp, 50.00_wp] ! Tl-Rn
 
 contains
 
@@ -117,9 +75,7 @@ pure elemental subroutine getvdwxy(rx, ry, rz, c66, s6, r0, vdw)
    real(wp), intent(out) :: vdw
 
    real(wp) :: t1, t2, t3, t4, t5, t6, t7, t11, t12, t16, t17, t25, t26, t35
-   real(wp) :: t40, t41, t43, t44, t56, avdw
-
-   avdw = 20.0_wp
+   real(wp) :: t40, t41, t43, t44, t56
    t1 = s6 * c66
    t2 = rx**2
    t3 = ry**2
@@ -129,17 +85,17 @@ pure elemental subroutine getvdwxy(rx, ry, rz, c66, s6, r0, vdw)
    t7 = t6**2
    t11 = sqrt(t5)
    t12 = 1.0_wp / r0
-   t16 = exp(-avdw*(t11*t12 - 1.0_wp))
+   t16 = exp(-d2_damping*(t11*t12 - 1.0_wp))
    t17 = 1.0_wp + t16
    t25 = t17**2
    t26 = 1.0_wp / t25
    t35 = 1.0_wp / t7
-   t40 = avdw**2
+   t40 = d2_damping**2
    t41 = r0**2
    t43 = t40 / t41
    t44 = t16**2
    t56 = -48.0_wp * t1 / t7 / t5 / t17 * rx * ry + 13.0_wp * t1 / t11 / &
-      t7 * t26 * rx * avdw * t12 * ry * t16 - 2.0_wp * t1 * t35 / t25 / &
+      t7 * t26 * rx * d2_damping * t12 * ry * t16 - 2.0_wp * t1 * t35 / t25 / &
       t17 * t43 * rx * t44 * ry + t1 * t35 * t26 * t43 * rx * ry * t16
    vdw = t56
 end subroutine getvdwxy
@@ -152,9 +108,7 @@ pure elemental subroutine getvdwxx(rx, ry, rz, c66, s6, r0, vdw)
    real(wp), intent(out) :: vdw
 
    real(wp) :: t1, t2, t3, t4, t5, t6, t7, t10, t11, t15, t16, t17, t24, t25, t29
-   real(wp) :: t33, t41, t42, t44, t45, t62, avdw
-
-   avdw = 20.0_wp
+   real(wp) :: t33, t41, t42, t44, t45, t62
    t1 = s6 * c66
    t2 = rx**2
    t3 = ry**2
@@ -164,20 +118,20 @@ pure elemental subroutine getvdwxx(rx, ry, rz, c66, s6, r0, vdw)
    t7 = t6**2
    t10 = sqrt(t5)
    t11 = 1.0_wp / r0
-   t15 = exp(-avdw*(t10*t11 - 1.0_wp))
+   t15 = exp(-d2_damping*(t10*t11 - 1.0_wp))
    t16 = 1.0_wp + t15
    t17 = 1.0_wp / t16
    t24 = t16**2
    t25 = 1.0_wp / t24
    t29 = t11 * t15
    t33 = 1.0_wp / t7
-   t41 = avdw**2
+   t41 = d2_damping**2
    t42 = r0**2
    t44 = t41 / t42
    t45 = t15**2
    t62 = -48.0_wp * t1 / t7 / t5 * t17 * t2 + 13.0_wp * t1 / t10 / t7 * &
-      t25 * t2 * avdw * t29 + 6.0_wp * t1 * t33 * t17 - 2.0_wp * t1 * t33 &
-      / t24 / t16 * t44 * t2 * t45 - t1 / t10 / t6 / t5 * t25 * avdw * &
+      t25 * t2 * d2_damping * t29 + 6.0_wp * t1 * t33 * t17 - 2.0_wp * t1 * t33 &
+      / t24 / t16 * t44 * t2 * t45 - t1 / t10 / t6 / t5 * t25 * d2_damping * &
       t29 + t1 * t33 * t25 * t44 * t2 * t15
    vdw = t62
 end subroutine getvdwxx

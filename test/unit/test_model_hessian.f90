@@ -22,9 +22,7 @@
 !> current code output and PASS. Otherwise they compare element-wise against
 !> stored references
 !>
-!> Tests may encode current buggy behavior such as rkl2=sum(rjk**2) in torsion
-!> and otherwise lock the current implementation until deliberate changes
-!> regenerate the references
+!> Deliberate model changes are documented with their fixture updates.
 module test_model_hessian
    use testdrive, only : new_unittest, unittest_type, error_type, check
    use xtb_mctc_accuracy, only : wp
@@ -77,6 +75,7 @@ subroutine collect_model_hessian(testsuite)
       new_unittest("model_hessian_charge", test_model_hessian_charge), &
       new_unittest("eeq_addition", test_eeq_addition), &
       new_unittest("gff_h2o", test_gff_h2o), &
+      new_unittest("torsion_reversal_key", test_torsion_reversal_key), &
       ! Out-of-plane behavior (ko != 0)
       new_unittest("lindh_d2_caffeine_oop", test_lindh_d2_caffeine_oop), &
       new_unittest("lindh_caffeine_oop", test_lindh_caffeine_oop), &
@@ -126,12 +125,14 @@ subroutine compute_mh_packed(mol, variant, modh, hess_packed)
    real(wp), allocatable, intent(out) :: hess_packed(:)
 
    integer :: n3
+   type(TEnvironment) :: env
    class(TModelHessian), allocatable :: model_hessian
 
+   call init(env)
    n3 = 3 * mol%n
    allocate(hess_packed(n3*(n3 + 1)/2))
    call new_model_hessian(variant, model_hessian)
-   call model_hessian%compute(mol%xyz, mol%n, hess_packed, mol%at, modh)
+   call model_hessian%compute(env, mol%xyz, mol%n, hess_packed, mol%at, modh)
 end subroutine compute_mh_packed
 
 
@@ -158,18 +159,20 @@ subroutine test_model_hessian_dense(error)
    type(error_type), allocatable, intent(out) :: error
 
    type(TMolecule) :: mol
+   type(TEnvironment) :: env
    class(TModelHessian), allocatable :: model_hessian
    integer :: i, j, ij, n3, variant
    real(wp), allocatable :: hess_packed(:), hess_dense(:, :)
 
+   call init(env)
    call getMolecule(mol, "h2o")
    n3 = 3 * mol%n
    allocate(hess_packed(n3*(n3 + 1)/2), hess_dense(n3, n3))
 
    do variant = VAR_LINDH_D2, VAR_SWART
       call new_model_hessian(variant, model_hessian)
-      call model_hessian%compute(mol%xyz, mol%n, hess_packed, mol%at, default_modh())
-      call model_hessian%compute(mol%xyz, mol%n, hess_dense, mol%at, default_modh())
+      call model_hessian%compute(env, mol%xyz, mol%n, hess_packed, mol%at, default_modh())
+      call model_hessian%compute(env, mol%xyz, mol%n, hess_dense, mol%at, default_modh())
 
       ij = 0
       do i = 1, n3
@@ -190,26 +193,28 @@ subroutine test_model_hessian_charge(error)
    type(error_type), allocatable, intent(out) :: error
 
    type(TMolecule) :: mol
+   type(TEnvironment) :: env
    type(chrg_parameter) :: chrgeq
    type(modhess_setvar) :: modh
    class(TModelHessian), allocatable :: model_hessian
    integer :: i, n3, variant
    real(wp), allocatable :: base(:), charged(:), contribution(:)
 
+   call init(env)
    call getMolecule(mol, "h2o")
    call new_charge_model_2019(chrgeq, mol%n, mol%at)
    n3 = 3 * mol%n
    allocate(base(n3*(n3 + 1)/2), charged(n3*(n3 + 1)/2), &
       & contribution(n3*(n3 + 1)/2))
    contribution = 0.0_wp
-   call add_eeq_hessian(mol%n, mol%at, mol%xyz, 0.0_wp, chrgeq, 0.1_wp, contribution)
+   call add_eeq_hessian(env, mol%n, mol%at, mol%xyz, 0.0_wp, chrgeq, 0.1_wp, contribution)
 
    do variant = VAR_LINDH_D2, VAR_SWART
       call new_model_hessian(variant, model_hessian)
       modh = default_modh()
-      call model_hessian%compute(mol%xyz, mol%n, base, mol%at, modh)
+      call model_hessian%compute(env, mol%xyz, mol%n, base, mol%at, modh)
       modh%kq = 0.1_wp
-      call model_hessian%compute(mol%xyz, mol%n, charged, mol%at, modh)
+      call model_hessian%compute(env, mol%xyz, mol%n, charged, mol%at, modh)
 
       do i = 1, size(base)
          call check(error, charged(i), base(i) + contribution(i), &
@@ -225,10 +230,12 @@ subroutine test_eeq_addition(error)
    type(error_type), allocatable, intent(out) :: error
 
    type(TMolecule) :: mol
+   type(TEnvironment) :: env
    type(chrg_parameter) :: chrgeq
    integer :: i, n3
    real(wp), allocatable :: contribution(:), shifted(:)
 
+   call init(env)
    call getMolecule(mol, "h2o")
    call new_charge_model_2019(chrgeq, mol%n, mol%at)
    n3 = 3 * mol%n
@@ -236,8 +243,8 @@ subroutine test_eeq_addition(error)
    contribution = 0.0_wp
    shifted = 1.0_wp
 
-   call add_eeq_hessian(mol%n, mol%at, mol%xyz, 0.0_wp, chrgeq, 0.1_wp, contribution)
-   call add_eeq_hessian(mol%n, mol%at, mol%xyz, 0.0_wp, chrgeq, 0.1_wp, shifted)
+   call add_eeq_hessian(env, mol%n, mol%at, mol%xyz, 0.0_wp, chrgeq, 0.1_wp, contribution)
+   call add_eeq_hessian(env, mol%n, mol%at, mol%xyz, 0.0_wp, chrgeq, 0.1_wp, shifted)
 
    call check(error, any(abs(contribution) > epsilon(0.0_wp)))
    if (allocated(error)) return
@@ -246,6 +253,31 @@ subroutine test_eeq_addition(error)
       if (allocated(error)) return
    end do
 end subroutine test_eeq_addition
+
+!> Check every distinct torsion and its reversal select one orientation
+subroutine test_torsion_reversal_key(error)
+   type(error_type), allocatable, intent(out) :: error
+
+   integer, parameter :: n = 4
+   integer :: i, j, k, l, ij, kl, selected
+
+   do i = 1, n
+      do j = 1, n
+         if (j == i) cycle
+         do k = 1, n
+            if (k == i .or. k == j) cycle
+            do l = 1, n
+               if (l == i .or. l == j .or. l == k) cycle
+               ij = n * (j - 1) + i
+               kl = n * (k - 1) + l
+               selected = merge(1, 0, ij > kl) + merge(1, 0, kl > ij)
+               call check(error, selected, 1)
+               if (allocated(error)) return
+            end do
+         end do
+      end do
+   end do
+end subroutine test_torsion_reversal_key
 
 
 !> Check the GFN-FF model Hessian against values from the current implementation
@@ -272,7 +304,7 @@ subroutine test_gff_h2o(error)
    allocate(hessian(n3*(n3 + 1)/2))
    modh = default_modh()
    model_hessian = newGFFModelHessian(calc%param, calc%topo, calc%neigh)
-   call model_hessian%compute(mol%xyz, mol%n, hessian, mol%at, modh)
+   call model_hessian%compute(env, mol%xyz, mol%n, hessian, mol%at, modh)
    call compare_or_write_ref(error, "gff_h2o", hessian)
 end subroutine test_gff_h2o
 

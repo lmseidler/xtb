@@ -16,6 +16,7 @@
 set(dir "${CMAKE_CURRENT_SOURCE_DIR}")
 
 list(APPEND srcs
+  "${dir}/model_hessian.f90"
   "${dir}/atomicmass.f90"
   "${dir}/atomicrad.f90"
   "${dir}/covalentradd3.f90"

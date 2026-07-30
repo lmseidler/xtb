@@ -1310,7 +1310,7 @@ subroutine modhes(env, calc, modh, natoms, xyz, chg, Hess, pr)
    end select
 
    if (allocated(model_hessian)) then
-      call model_hessian%compute(xyz, natoms, Hess, chg, modh)
+      call model_hessian%compute(env, xyz, natoms, Hess, chg, modh)
    end if
 
 !  constraints

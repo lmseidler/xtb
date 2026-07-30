@@ -18,6 +18,7 @@
 !> Common interface for model Hessian implementations
 module xtb_modelhessian_type
    use xtb_mctc_accuracy, only : wp
+   use xtb_type_environment, only : TEnvironment
    use xtb_type_setvar, only : modhess_setvar
    implicit none(type, external)
    private
@@ -89,11 +90,13 @@ module xtb_modelhessian_type
       end subroutine model_hessian_mode
 
       !> Add charge-dependent contributions to a packed Hessian
-      subroutine model_hessian_charge(self, xyz, n, hess, at, kq)
-         import :: TModelHessian, wp
+      subroutine model_hessian_charge(self, env, xyz, n, hess, at, kq)
+         import :: TModelHessian, TEnvironment, wp
          implicit none(type, external)
          !> Model Hessian implementation
          class(TModelHessian), intent(in) :: self
+         !> Calculation environment
+         type(TEnvironment), intent(inout) :: env
          !> Number of atoms
          integer, intent(in) :: n
          !> Cartesian coordinates
@@ -110,9 +113,11 @@ module xtb_modelhessian_type
 contains
 
 !> Compute Hessian in packed lower-triangle storage
-subroutine compute_packed(self, xyz, n, hess, at, modh)
+subroutine compute_packed(self, env, xyz, n, hess, at, modh)
    !> Model Hessian implementation
    class(TModelHessian), intent(in) :: self
+   !> Calculation environment
+   type(TEnvironment), intent(inout) :: env
    !> Number of atoms
    integer, intent(in) :: n
    !> Cartesian coordinates
@@ -142,14 +147,16 @@ subroutine compute_packed(self, xyz, n, hess, at, modh)
       call self%outofplane(xyz, n, hess, at, modh%ko, kd, lcutoff)
    end if
    if (modh%kq /= 0.0_wp) then
-      call self%add_charge(xyz, n, hess, at, modh%kq)
+      call self%add_charge(env, xyz, n, hess, at, modh%kq)
    end if
 end subroutine compute_packed
 
 !> Compute dense symmetric Hessian from packed implementation
-subroutine compute_dense(self, xyz, n, hess, at, modh)
+subroutine compute_dense(self, env, xyz, n, hess, at, modh)
    !> Model Hessian implementation
    class(TModelHessian), intent(in) :: self
+   !> Calculation environment
+   type(TEnvironment), intent(inout) :: env
    !> Number of atoms
    integer, intent(in) :: n
    !> Cartesian coordinates
@@ -165,7 +172,7 @@ subroutine compute_dense(self, xyz, n, hess, at, modh)
    real(wp), allocatable :: packed(:)
 
    allocate(packed((3*n)*(3*n + 1)/2))
-   call self%compute_packed(xyz, n, packed, at, modh)
+   call self%compute_packed(env, xyz, n, packed, at, modh)
 
    ij = 0
    do i = 1, 3 * n
