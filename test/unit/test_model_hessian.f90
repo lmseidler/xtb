@@ -29,6 +29,8 @@ module test_model_hessian
    use testdrive, only : new_unittest, unittest_type, error_type, check
    use xtb_mctc_accuracy, only : wp
    use xtb_chargemodel, only : new_charge_model_2019
+   use xtb_gfnff_calculator, only : TGFFCalculator, newGFFCalculator
+   use xtb_modelhessian_gff, only : mh_gff
    use xtb_type_molecule, only : TMolecule
    use xtb_modelhessian_eeq, only : add_eeq_hessian
    use xtb_modelhessian_type, only : TModelHessian
@@ -73,6 +75,7 @@ subroutine collect_model_hessian(testsuite)
       new_unittest("model_hessian_dense", test_model_hessian_dense), &
       new_unittest("model_hessian_charge", test_model_hessian_charge), &
       new_unittest("eeq_addition", test_eeq_addition), &
+      new_unittest("gff_h2o", test_gff_h2o), &
       ! Out-of-plane behavior (ko != 0)
       new_unittest("lindh_d2_caffeine_oop", test_lindh_d2_caffeine_oop), &
       new_unittest("lindh_caffeine_oop", test_lindh_caffeine_oop), &
@@ -240,6 +243,55 @@ subroutine test_eeq_addition(error)
       if (allocated(error)) return
    end do
 end subroutine test_eeq_addition
+
+
+!> Check the GFN-FF model Hessian against values from the current implementation
+subroutine test_gff_h2o(error)
+   type(error_type), allocatable, intent(out) :: error
+
+   type(TMolecule) :: mol
+   type(TEnvironment) :: env
+   type(TGFFCalculator) :: calc
+   type(modhess_setvar) :: modh
+   real(wp), allocatable :: hessian(:)
+   real(wp), parameter :: hessian_ref(45) = reshape([&
+      & 8.773653166565035E-01_wp,  0.000000000000000E+00_wp,  4.538894511017244E-03_wp, &
+      & 0.000000000000000E+00_wp,  0.000000000000000E+00_wp,  1.090816395965398E+00_wp, &
+      &-4.386826583282517E-01_wp,  0.000000000000000E+00_wp, -1.225221024048295E-01_wp, &
+      & 5.234760825580048E-01_wp,  0.000000000000000E+00_wp, -2.269447255508622E-03_wp, &
+      & 0.000000000000000E+00_wp,  0.000000000000000E+00_wp,  1.660799248573899E-03_wp, &
+      &-3.395567216330035E-01_wp,  0.000000000000000E+00_wp, -5.454081979826992E-01_wp, &
+      & 2.310394120189165E-01_wp,  0.000000000000000E+00_wp,  4.053283378675142E-01_wp, &
+      &-4.386826583282517E-01_wp,  0.000000000000000E+00_wp,  1.225221024048295E-01_wp, &
+      &-8.479342422975308E-02_wp,  0.000000000000000E+00_wp,  1.085173096140870E-01_wp, &
+      & 5.234760825580048E-01_wp,  0.000000000000000E+00_wp, -2.269447255508622E-03_wp, &
+      & 0.000000000000000E+00_wp,  0.000000000000000E+00_wp,  6.086480069347232E-04_wp, &
+      & 0.000000000000000E+00_wp,  0.000000000000000E+00_wp,  1.660799248573899E-03_wp, &
+      & 3.395567216330035E-01_wp,  0.000000000000000E+00_wp, -5.454081979826992E-01_wp, &
+      &-1.085173096140870E-01_wp,  0.000000000000000E+00_wp,  1.400798601151851E-01_wp, &
+      &-2.310394120189165E-01_wp,  0.000000000000000E+00_wp,  4.053283378675142E-01_wp],&
+      & shape(hessian_ref))
+   integer :: i, n3
+   logical :: terminate
+
+   call init(env)
+   call getMolecule(mol, "h2o")
+   call newGFFCalculator(env, mol, calc, '.param_gfnff.xtb', .false.)
+   call env%check(terminate)
+   call check(error, terminate .eqv. .false.)
+   if (allocated(error)) return
+
+   n3 = 3 * mol%n
+   allocate(hessian(n3*(n3+1)/2))
+   modh = default_modh()
+   call mh_gff(mol%xyz, mol%n, hessian, mol%at, modh%s6, &
+      & calc%param, calc%topo, calc%neigh)
+
+   do i = 1, size(hessian_ref)
+      call check(error, hessian(i), hessian_ref(i), thr=100*epsilon(0.0_wp))
+      if (allocated(error)) return
+   end do
+end subroutine test_gff_h2o
 
 
 !> Path to reference file for a given label
