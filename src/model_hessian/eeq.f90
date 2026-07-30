@@ -40,11 +40,11 @@ module xtb_modelhessian_eeq
          character(len = 1), intent(in) :: uplo
          integer, intent(in) :: n, nrhs, lda, ldb, lwork
          ! allow(C071)
-         real(wp), intent(inout) :: a(lda,*)
+         real(wp), intent(inout) :: a(lda, *)
          ! allow(C071)
          integer, intent(out) :: ipiv(*)
          ! allow(C071)
-         real(wp), intent(inout) :: b(ldb,*)
+         real(wp), intent(inout) :: b(ldb, *)
          ! allow(C071)
          real(wp), intent(inout) :: work(*)
          integer, intent(out) :: info

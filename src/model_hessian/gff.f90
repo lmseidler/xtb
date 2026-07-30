@@ -19,6 +19,7 @@
 !> GFN-FF-specific model Hessian implementation
 module xtb_modelhessian_gff
    use xtb_mctc_accuracy, only : wp
+   use xtb_mctc_math, only : crossProd
    use xtb_bmatrix, only : bmat_bond, bmat_angle, bmat_linbend, &
       & bmat_torsion, bmat_accum_packed, bmat_accum_pairblock_packed
    use xtb_gfnff_data, only : TGFFData
@@ -114,7 +115,7 @@ subroutine stretch(self, xyz, n, hess, at, kr, kd, s6, lcutoff, rcut)
       ir = itabrow(mapped_at(i))
       jr = itabrow(mapped_at(j))
       vec = xyz(:, i) - xyz(:, j)
-      r2 = vec(1)**2 + vec(2)**2 + vec(3)**2
+      r2 = dot_product(vec, vec)
       gmm = gff_stretch_constant * exp(aav(ir, jr)*(rav(ir, jr)**2 - r2))
       call bmat_accum_packed(n, hess, [i, j], bmat_bond(vec), gmm)
    end do
@@ -122,7 +123,7 @@ subroutine stretch(self, xyz, n, hess, at, kr, kd, s6, lcutoff, rcut)
    do i = 1, n
       do j = 1, i - 1
          vec = xyz(:, i) - xyz(:, j)
-         r2 = vec(1)**2 + vec(2)**2 + vec(3)**2
+         r2 = dot_product(vec, vec)
          if (r2 > 1600.0_wp) cycle
          cdisp = -s6 * sqrt(c6(mapped_at(i))*c6(mapped_at(j)))
          qq = 2.0_wp * self%topo%qa(i) * self%topo%qa(j)
@@ -174,9 +175,7 @@ subroutine bend(self, xyz, n, hess, at, force_constant, kd, lcutoff)
       gij = gff_bend_constant * exp( &
          aav(mr, ir) * rav(mr, ir)**2 + aav(mr, jr) * rav(mr, jr)**2 &
          -aav(mr, ir) * rmi2 - aav(mr, jr) * rmj2)
-      cross_vec(1) = vec_mi(2) * vec_mj(3) - vec_mi(3) * vec_mj(2)
-      cross_vec(2) = vec_mi(3) * vec_mj(1) - vec_mi(1) * vec_mj(3)
-      cross_vec(3) = vec_mi(1) * vec_mj(2) - vec_mi(2) * vec_mj(1)
+      cross_vec = crossProd(vec_mi, vec_mj)
       sinphi = norm2(cross_vec) / (rmi*rmj)
       if (sinphi > distance_threshold) then
          bmat9 = bmat_angle(vec_mi, vec_mj)
@@ -286,7 +285,7 @@ pure subroutine get_pair_hessian(vec, qq, cdisp, r0_squared, hessian)
 
    real(wp) :: r2, r, r3, damped_r
 
-   r2 = vec(1)**2 + vec(2)**2 + vec(3)**2
+   r2 = dot_product(vec, vec)
    r = sqrt(r2)
    r3 = r * r2
    damped_r = r + sqrt(r0_squared)

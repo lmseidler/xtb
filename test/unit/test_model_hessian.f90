@@ -45,10 +45,10 @@ module test_model_hessian
    public :: collect_model_hessian
 
    integer, parameter :: VAR_LINDH_D2 = 1
-   integer, parameter :: VAR_LINDH    = 2
-   integer, parameter :: VAR_SWART    = 3
+   integer, parameter :: VAR_LINDH = 2
+   integer, parameter :: VAR_SWART = 3
 
-   real(wp), parameter :: thr = 10*epsilon(0.0_wp)
+   real(wp), parameter :: thr = 10 * epsilon(0.0_wp)
 
 contains
 
@@ -129,7 +129,7 @@ subroutine compute_mh_packed(mol, variant, modh, hess_packed)
    class(TModelHessian), allocatable :: model_hessian
 
    n3 = 3 * mol%n
-   allocate(hess_packed(n3*(n3+1)/2))
+   allocate(hess_packed(n3*(n3 + 1)/2))
    call new_model_hessian(variant, model_hessian)
    call model_hessian%compute(mol%xyz, mol%n, hess_packed, mol%at, modh)
 end subroutine compute_mh_packed
@@ -140,7 +140,7 @@ subroutine new_model_hessian(variant, model_hessian)
    integer, intent(in) :: variant
    class(TModelHessian), allocatable, intent(out) :: model_hessian
 
-   select case(variant)
+   select case (variant)
    case(VAR_LINDH_D2)
       allocate(TLindhD2ModelHessian :: model_hessian)
    case(VAR_LINDH)
@@ -164,7 +164,7 @@ subroutine test_model_hessian_dense(error)
 
    call getMolecule(mol, "h2o")
    n3 = 3 * mol%n
-   allocate(hess_packed(n3*(n3+1)/2), hess_dense(n3, n3))
+   allocate(hess_packed(n3*(n3 + 1)/2), hess_dense(n3, n3))
 
    do variant = VAR_LINDH_D2, VAR_SWART
       call new_model_hessian(variant, model_hessian)
@@ -199,8 +199,8 @@ subroutine test_model_hessian_charge(error)
    call getMolecule(mol, "h2o")
    call new_charge_model_2019(chrgeq, mol%n, mol%at)
    n3 = 3 * mol%n
-   allocate(base(n3*(n3+1)/2), charged(n3*(n3+1)/2), &
-      & contribution(n3*(n3+1)/2))
+   allocate(base(n3*(n3 + 1)/2), charged(n3*(n3 + 1)/2), &
+      & contribution(n3*(n3 + 1)/2))
    contribution = 0.0_wp
    call add_eeq_hessian(mol%n, mol%at, mol%xyz, 0.0_wp, chrgeq, 0.1_wp, contribution)
 
@@ -213,7 +213,7 @@ subroutine test_model_hessian_charge(error)
 
       do i = 1, size(base)
          call check(error, charged(i), base(i) + contribution(i), &
-            & thr=100*epsilon(0.0_wp))
+            & thr=100 * epsilon(0.0_wp))
          if (allocated(error)) return
       end do
    end do
@@ -232,7 +232,7 @@ subroutine test_eeq_addition(error)
    call getMolecule(mol, "h2o")
    call new_charge_model_2019(chrgeq, mol%n, mol%at)
    n3 = 3 * mol%n
-   allocate(contribution(n3*(n3+1)/2), shifted(n3*(n3+1)/2))
+   allocate(contribution(n3*(n3 + 1)/2), shifted(n3*(n3 + 1)/2))
    contribution = 0.0_wp
    shifted = 1.0_wp
 
@@ -269,7 +269,7 @@ subroutine test_gff_h2o(error)
    if (allocated(error)) return
 
    n3 = 3 * mol%n
-   allocate(hessian(n3*(n3+1)/2))
+   allocate(hessian(n3*(n3 + 1)/2))
    modh = default_modh()
    model_hessian = newGFFModelHessian(calc%param, calc%topo, calc%neigh)
    call model_hessian%compute(mol%xyz, mol%n, hessian, mol%at, modh)

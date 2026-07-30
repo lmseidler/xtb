@@ -28,6 +28,7 @@
 module xtb_modelhessian_lindh
    use xtb_mctc_accuracy, only : wp
    use xtb_mctc_constants, only : pi
+   use xtb_mctc_math, only : crossProd
    use xtb_chargemodel, only : new_charge_model_2019
    use xtb_bmatrix, only : bmat_bond, bmat_torsion, bmat_outofplane, &
       & oop_angle, bmat_accum_packed, bmat_accum_pairblock_packed
@@ -36,7 +37,7 @@ module xtb_modelhessian_lindh
       & getvdw_hess, fk_vdw
    use xtb_modelhessian_eeq, only : add_eeq_hessian
    use xtb_type_param, only : chrg_parameter
-   implicit none (type, external)
+   implicit none(type, external)
 
    private
 
@@ -100,8 +101,9 @@ module xtb_modelhessian_lindh
     abstract interface
        pure function lindh_parameter_provider(self) result(parameters)
           import :: TLindhModelHessianBase, TLindhParameters
-          implicit none (type, external)
+          implicit none(type, external)
          class(TLindhModelHessianBase), intent(in) :: self
+
          type(TLindhParameters) :: parameters
       end function lindh_parameter_provider
    end interface
@@ -110,6 +112,7 @@ contains
 
 pure function get_lindh_parameters(self) result(parameters)
    class(TLindhModelHessian), intent(in) :: self
+
    type(TLindhParameters) :: parameters
 
    parameters = lindh_parameters
@@ -117,6 +120,7 @@ end function get_lindh_parameters
 
 pure function get_lindh_d2_parameters(self) result(parameters)
    class(TLindhD2ModelHessian), intent(in) :: self
+
    type(TLindhParameters) :: parameters
 
    parameters = lindh_d2_parameters
@@ -126,7 +130,7 @@ subroutine add_charge(self, xyz, n, hess, at, kq)
    class(TLindhModelHessianBase), intent(in) :: self
    integer, intent(in) :: n
    real(wp), intent(in) :: xyz(3, n)
-   real(wp), intent(inout) :: hess((3*n)*(3*n+1)/2)
+   real(wp), intent(inout) :: hess((3*n)*(3*n + 1)/2)
    integer, intent(in) :: at(n)
    real(wp), intent(in) :: kq
 
@@ -190,23 +194,23 @@ end subroutine add_charge
 !! ------------------------------------------------------------------------
 pure subroutine stretch(self, xyz, n, hess, at, kr, kd, s6, lcutoff, rcut)
    class(TLindhModelHessianBase), intent(in) :: self
-   integer, intent(in)    :: n
-   integer, intent(in)    :: at(n)
-   real(wp),intent(in)    :: xyz(3,n)
-   real(wp),intent(inout) :: hess((3*n)*(3*n+1)/2)
-   real(wp),intent(in)    :: kr
-   real(wp),intent(in)    :: kd
-   real(wp),intent(in)    :: s6
-   logical, intent(inout) :: lcutoff(n,n)
-   real(wp),intent(in)    :: rcut
+   integer, intent(in) :: n
+   integer, intent(in) :: at(n)
+   real(wp), intent(in) :: xyz(3, n)
+   real(wp), intent(inout) :: hess((3*n)*(3*n + 1)/2)
+   real(wp), intent(in) :: kr
+   real(wp), intent(in) :: kd
+   real(wp), intent(in) :: s6
+   logical, intent(inout) :: lcutoff(n, n)
+   real(wp), intent(in) :: rcut
 
-   integer  :: i,ir,j,jr
+   integer :: i, ir, j, jr
    type(TLindhParameters) :: parameters
-   real(wp) :: aav(3,3), rav(3,3), dav(3,3)
+   real(wp) :: aav(3, 3), rav(3, 3), dav(3, 3)
    real(wp) :: vec(3), rij2, r0, d0
-   real(wp) :: alpha,gmm
-   real(wp) :: c6i,c6j,c6ij,rv
-   real(wp) :: vdw(3,3)
+   real(wp) :: alpha, gmm
+   real(wp) :: c6i, c6j, c6ij, rv
+   real(wp) :: vdw(3, 3)
    real(wp) :: bmat6(6)
 
    parameters = self%get_parameters()
@@ -220,30 +224,30 @@ pure subroutine stretch(self, xyz, n, hess, at, kr, kd, s6, lcutoff, rcut)
    stretch_iAt: do i = 1, n
       ir = itabrow(at(i))
 
-      stretch_jAt: do j = 1, i-1
-         jr=itabrow(at(j))
+      stretch_jAt: do j = 1, i - 1
+         jr = itabrow(at(j))
 
          ! save for later
-         lcutoff(i,j) = rcutoff(xyz,i,j,rcut)
-         lcutoff(j,i) = lcutoff(i,j)
+         lcutoff(i, j) = rcutoff(xyz, i, j, rcut)
+         lcutoff(j, i) = lcutoff(i, j)
 
-         vec = xyz(:,i) - xyz(:,j)
+         vec = xyz(:, i) - xyz(:, j)
          rij2 = dot_product(vec, vec)
-         r0 = rav(ir,jr)
-         d0 = dav(ir,jr)
-         alpha=aav(ir,jr)
+         r0 = rav(ir, jr)
+         d0 = dav(ir, jr)
+         alpha = aav(ir, jr)
 
          !cccccc vdwx ccccccccccccccccccccccccccccccccc
-         c6i=c6(at(i))
-         c6j=c6(at(j))
-         c6ij=sqrt(c6i*c6j)
-         rv=(vander(at(i))+vander(at(j)))
+         c6i = c6(at(i))
+         c6j = c6(at(j))
+         c6ij = sqrt(c6i*c6j)
+         rv = (vander(at(i)) + vander(at(j)))
 
          call getvdw_hess(vec, c6ij, s6, rv, vdw)
          !cccccc ende vdwx ccccccccccccccccccccccccccccccc
 
-         gmm = kr*fk_lindh(alpha,r0,rij2) &
-            + kr*kd * fk_vdw(4.0_wp,d0,rij2)
+         gmm = kr * fk_lindh(alpha, r0, rij2) &
+            + kr * kd * fk_vdw(4.0_wp, d0, rij2)
 
          ! pure stretch: gmm * B^T B
          bmat6 = bmat_bond(vec)
@@ -259,26 +263,28 @@ end subroutine stretch
 
 pure subroutine bend(self, xyz, n, hess, at, force_constant, kd, lcutoff)
    class(TLindhModelHessianBase), intent(in) :: self
-   integer, intent(in)    :: n
-   integer, intent(in)    :: at(n)
-   real(wp),intent(in)    :: xyz(3,n)
-   real(wp),intent(inout) :: hess((3*n)*(3*n+1)/2)
-   real(wp),intent(in)    :: force_constant
-   real(wp),intent(in)    :: kd
-   logical, intent(in)    :: lcutoff(n,n)
+   integer, intent(in) :: n
+   integer, intent(in) :: at(n)
+   real(wp), intent(in) :: xyz(3, n)
+   real(wp), intent(inout) :: hess((3*n)*(3*n + 1)/2)
+   real(wp), intent(in) :: force_constant
+   real(wp), intent(in) :: kd
+   logical, intent(in) :: lcutoff(n, n)
 
-   integer  :: i,ir,j,jr,m,mr,ii
+   integer :: i, ir, j, jr, m, mr, ii
    type(TLindhParameters) :: parameters
-   real(wp) :: aav(3,3), rav(3,3), dav(3,3)
-   real(wp),parameter :: rzero = 1.0e-10_wp
-   real(wp) :: xij,yij,zij,rij2,rrij,r1
-   real(wp) :: xmi,ymi,zmi,rmi2,rmi,r0mi,ami,d0mj,gmi
-   real(wp) :: xmj,ymj,zmj,rmj2,rmj,r0mj,amj,d0mi,gmj
-   real(wp) :: test,gij,rl2,rl,rmidotrmj
-   real(wp) :: sinphi,cosphi,costhetax,costhetay,costhetaz
-   real(wp) :: alpha
-   real(wp) :: si(3),sj(3),sm(3),x(2),y(2),z(2)
+   real(wp) :: aav(3, 3), rav(3, 3), dav(3, 3)
+   real(wp), parameter :: rzero = 1.0e-10_wp
+   real(wp) :: vec_ij(3), vec_mi(3), vec_mj(3), cross_vec(3)
+   real(wp) :: rmi2, rmi, r0mi, ami, d0mj, gmi
+   real(wp) :: rmj2, rmj, r0mj, amj, d0mi, gmj
+   real(wp) :: rij2, rrij, gij, rl2, rl
+   real(wp) :: sinphi, cosphi, r1
+   real(wp) :: si(3), sj(3), sm(3), directions(3, 2), unit_direction(3)
    real(wp) :: bmat9(9)
+   real(wp), parameter :: x_axis(3) = [1.0_wp, 0.0_wp, 0.0_wp]
+   real(wp), parameter :: y_axis(3) = [0.0_wp, 1.0_wp, 0.0_wp]
+   real(wp), parameter :: z_axis(3) = [0.0_wp, 0.0_wp, 1.0_wp]
 
    parameters = self%get_parameters()
    aav = parameters%aav
@@ -289,110 +295,80 @@ pure subroutine bend(self, xyz, n, hess, at, force_constant, kd, lcutoff)
 !  Hessian for bending
 !! ------------------------------------------------------------------------
    bend_mAt: do m = 1, n
-      mr=itabrow(at(m))
+      mr = itabrow(at(m))
       bend_iAt: do i = 1, n
           if (i == m) cycle bend_iAt
-         ir=itabrow(at(i))
-         if(lcutoff(i,m)) cycle bend_iAt
+         ir = itabrow(at(i))
+         if (lcutoff(i, m)) cycle bend_iAt
 
-         xmi=(xyz(1,i)-xyz(1,m))
-         ymi=(xyz(2,i)-xyz(2,m))
-         zmi=(xyz(3,i)-xyz(3,m))
-         rmi2 = xmi**2 + ymi**2 + zmi**2
-         rmi=sqrt(rmi2)
-         r0mi=rav(mr,ir)
-         d0mi=dav(mr,ir)
-         ami=aav(mr,ir)
+         vec_mi = xyz(:, i) - xyz(:, m)
+         rmi2 = dot_product(vec_mi, vec_mi)
+         rmi = sqrt(rmi2)
+         r0mi = rav(mr, ir)
+         d0mi = dav(mr, ir)
+         ami = aav(mr, ir)
 
-         bend_jAt: do j = 1, i-1
+         bend_jAt: do j = 1, i - 1
              if (j == m) cycle bend_jAt
-            jr=itabrow(at(j))
-            if(lcutoff(j,i)) cycle bend_jAt
-            if(lcutoff(j,m)) cycle bend_jAt
+            jr = itabrow(at(j))
+            if (lcutoff(j, i)) cycle bend_jAt
+            if (lcutoff(j, m)) cycle bend_jAt
 
-            xmj=(xyz(1,j)-xyz(1,m))
-            ymj=(xyz(2,j)-xyz(2,m))
-            zmj=(xyz(3,j)-xyz(3,m))
-            rmj2 = xmj**2 + ymj**2 + zmj**2
-            rmj=sqrt(rmj2)
-            r0mj=rav(mr,jr)
-            d0mj=dav(mr,jr)
-            amj=aav(mr,jr)
+            vec_mj = xyz(:, j) - xyz(:, m)
+            rmj2 = dot_product(vec_mj, vec_mj)
+            rmj = sqrt(rmj2)
+            r0mj = rav(mr, jr)
+            d0mj = dav(mr, jr)
+            amj = aav(mr, jr)
 
             ! test if zero angle
-            test=xmi*xmj+ymi*ymj+zmi*zmj
-            test=test/(rmi*rmj)
-            if (abs(test-1.0_wp) < 1.0e-12_wp) cycle bend_jAt
+            cosphi = dot_product(vec_mi, vec_mj) / (rmi*rmj)
+            if (abs(cosphi - 1.0_wp) < 1.0e-12_wp) cycle bend_jAt
 
-            xij=(xyz(1,j)-xyz(1,i))
-            yij=(xyz(2,j)-xyz(2,i))
-            zij=(xyz(3,j)-xyz(3,i))
-            rij2 = xij**2 + yij**2 + zij**2
-            rrij=sqrt(rij2)
+            vec_ij = xyz(:, j) - xyz(:, i)
+            rij2 = dot_product(vec_ij, vec_ij)
+            rrij = sqrt(rij2)
 
-            gmi = fk_lindh(ami,r0mi,rmi2) &
-                + 0.5_wp*kd * fk_vdw(4.0_wp,d0mi,rmi2)
-            gmj = fk_lindh(amj,r0mj,rmj2) &
-                + 0.5_wp*kd * fk_vdw(4.0_wp,d0mj,rmj2)
+            gmi = fk_lindh(ami, r0mi, rmi2) &
+                + 0.5_wp * kd * fk_vdw(4.0_wp, d0mi, rmi2)
+            gmj = fk_lindh(amj, r0mj, rmj2) &
+                + 0.5_wp * kd * fk_vdw(4.0_wp, d0mj, rmj2)
 
-            gij = force_constant*gmi*gmj
+            gij = force_constant * gmi * gmj
 
-            rl2=(ymi*zmj-zmi*ymj)**2+(zmi*xmj-xmi*zmj)**2+(xmi*ymj-ymi*xmj)**2
+            cross_vec = crossProd(vec_mi, vec_mj)
+            rl2 = dot_product(cross_vec, cross_vec)
 
-            if(rl2 < 1.e-14_wp) then
-               rl=0.0_wp
+            if (rl2 < 1.e-14_wp) then
+               rl = 0.0_wp
             else
-               rl=sqrt(rl2)
+               rl = sqrt(rl2)
             end if
 
             if ((rmj > rzero) .and. (rmi > rzero) .and. (rrij > rzero)) then
-               sinphi=rl/(rmj*rmi)
-               rmidotrmj=xmi*xmj+ymi*ymj+zmi*zmj
-               cosphi=rmidotrmj/(rmj*rmi)
+               sinphi = rl / (rmj*rmi)
                ! none linear case
                if (sinphi > rzero) then
-                  si(1)=(xmi/rmi*cosphi-xmj/rmj)/(rmi*sinphi)
-                  si(2)=(ymi/rmi*cosphi-ymj/rmj)/(rmi*sinphi)
-                  si(3)=(zmi/rmi*cosphi-zmj/rmj)/(rmi*sinphi)
-                  sj(1)=(cosphi*xmj/rmj-xmi/rmi)/(rmj*sinphi)
-                  sj(2)=(cosphi*ymj/rmj-ymi/rmi)/(rmj*sinphi)
-                  sj(3)=(cosphi*zmj/rmj-zmi/rmi)/(rmj*sinphi)
-                  sm(1)=-si(1)-sj(1)
-                  sm(2)=-si(2)-sj(2)
-                  sm(3)=-si(3)-sj(3)
+                  si = (vec_mi/rmi*cosphi - vec_mj/rmj) / (rmi*sinphi)
+                  sj = (cosphi*vec_mj/rmj - vec_mi/rmi) / (rmj*sinphi)
+                  sm = -si - sj
                   bmat9 = [si, sm, sj]
                   call bmat_accum_packed(n, hess, [i, m, j], bmat9, gij)
                 else
                   ! linear case
-                  if ((abs(ymi) > rzero) .or. (abs(xmi) > rzero)) then
-                     x(1)=-ymi
-                     y(1)=xmi
-                     z(1)=0.0_wp
-                     x(2)=-xmi*zmi
-                     y(2)=-ymi*zmi
-                     z(2)=xmi*xmi+ymi*ymi
+                  if ((abs(vec_mi(2)) > rzero) .or. (abs(vec_mi(1)) > rzero)) then
+                     directions(:, 1) = crossProd(z_axis, vec_mi)
+                     directions(:, 2) = crossProd(vec_mi, directions(:, 1))
                   else
-                     x(1)=1.0_wp
-                     y(1)=0.0_wp
-                     z(1)=0.0_wp
-                     x(2)=0.0_wp
-                     y(2)=1.0_wp
-                     z(2)=0.0_wp
+                     directions(:, 1) = x_axis
+                     directions(:, 2) = y_axis
                   end if
-                  do ii=1,2
-                     r1=sqrt(x(ii)**2+y(ii)**2+z(ii)**2)
-                     costhetax=x(ii)/r1
-                     costhetay=y(ii)/r1
-                     costhetaz=z(ii)/r1
-                     si(1)=-costhetax/rmi
-                     si(2)=-costhetay/rmi
-                     si(3)=-costhetaz/rmi
-                     sj(1)=-costhetax/rmj
-                     sj(2)=-costhetay/rmj
-                     sj(3)=-costhetaz/rmj
-                     sm(1)=-(si(1)+sj(1))
-                     sm(2)=-(si(2)+sj(2))
-                     sm(3)=-(si(3)+sj(3))
+                  do ii = 1, 2
+                     r1 = norm2(directions(:, ii))
+                     unit_direction = directions(:, ii) / r1
+                     si = -unit_direction / rmi
+                     sj = -unit_direction / rmj
+                     sm = -si - sj
                      bmat9 = [si, sm, sj]
                      call bmat_accum_packed(n, hess, [i, m, j], bmat9, gij)
                    end do
@@ -408,27 +384,26 @@ end subroutine bend
 
 subroutine torsion(self, xyz, n, hess, at, force_constant, kd, lcutoff)
    class(TLindhModelHessianBase), intent(in) :: self
-   integer, intent(in)    :: n
-   integer, intent(in)    :: at(n)
-   real(wp),intent(in)    :: xyz(3,n)
-   real(wp),intent(inout) :: hess((3*n)*(3*n+1)/2)
-   real(wp),intent(in)    :: force_constant
-   real(wp),intent(in)    :: kd
-   logical, intent(in)    :: lcutoff(n,n)
+   integer, intent(in) :: n
+   integer, intent(in) :: at(n)
+   real(wp), intent(in) :: xyz(3, n)
+   real(wp), intent(inout) :: hess((3*n)*(3*n + 1)/2)
+   real(wp), intent(in) :: force_constant
+   real(wp), intent(in) :: kd
+   logical, intent(in) :: lcutoff(n, n)
 
-   integer  :: i,ir,j,jr,k,kr,l,lr,ij,kl
+   integer :: i, ir, j, jr, k, kr, l, lr, ij, kl
    type(TLindhParameters) :: parameters
-   real(wp) :: aav(3,3), rav(3,3), dav(3,3)
+   real(wp) :: aav(3, 3), rav(3, 3), dav(3, 3)
 !  allow only angles in the range of 35-145
-   real(wp),parameter :: a35 = (35.0_wp/180.0_wp)* pi
-   real(wp),parameter :: cosfi_max=cos(a35)
-   real(wp) :: txyz(3,4),c(3,4)
-   real(wp) :: rij(3),rij0,aij,rij2,d0ij,gij
-   real(wp) :: rjk(3),rjk0,ajk,rjk2,d0jk,gjk
-   real(wp) :: rkl(3),rkl0,akl,rkl2,d0kl,gkl
-   real(wp) :: cosfi2,cosfi3,cosfi4
-   real(wp) :: beta,tij
-   real(wp) :: si(3),sj(3),sk(3),sl(3)
+   real(wp), parameter :: a35 = (35.0_wp/180.0_wp) * pi
+   real(wp), parameter :: cosfi_max = cos(a35)
+   real(wp) :: txyz(3, 4), c(3, 4)
+   real(wp) :: rij(3), rij0, aij, rij2, d0ij, gij
+   real(wp) :: rjk(3), rjk0, ajk, rjk2, d0jk, gjk
+   real(wp) :: rkl(3), rkl0, akl, rkl2, d0kl, gkl
+   real(wp) :: cosfi2, cosfi3
+   real(wp) :: tij
    real(wp) :: brow12(12)
 
    parameters = self%get_parameters()
@@ -439,76 +414,72 @@ subroutine torsion(self, xyz, n, hess, at, force_constant, kd, lcutoff)
 !! ------------------------------------------------------------------------
 !  Hessian for torsion
 !! ------------------------------------------------------------------------
-   torsion_jAt: do j = 1,n
-      jr=itabrow(at(j))
-      txyz(:,2)=xyz(:,j)
+   torsion_jAt: do j = 1, n
+      jr = itabrow(at(j))
+      txyz(:, 2) = xyz(:, j)
       torsion_kAt: do k = 1, n
          if (k == j) cycle torsion_kAt
-         kr=itabrow(at(k))
-         if(lcutoff(k,j)) cycle torsion_kAt
-         txyz(:,3) = xyz(:,k)
+         kr = itabrow(at(k))
+         if (lcutoff(k, j)) cycle torsion_kAt
+         txyz(:, 3) = xyz(:, k)
          torsion_iAt: do i = 1, n
-            ij=n*(j-1)+i
+            ij = n * (j - 1) + i
             if (i == j) cycle torsion_iAt
             if (i == k) cycle torsion_iAt
-            ir=itabrow(at(i))
-            if(lcutoff(i,k)) cycle torsion_iAt
-            if(lcutoff(i,j)) cycle torsion_iAt
+            ir = itabrow(at(i))
+            if (lcutoff(i, k)) cycle torsion_iAt
+            if (lcutoff(i, j)) cycle torsion_iAt
 
-            txyz(:,1)=xyz(:,i)
+            txyz(:, 1) = xyz(:, i)
             torsion_lAt: do l = 1, n
-               kl=n*(k-1)+l
+               kl = n * (k - 1) + l
                if (ij <= kl) cycle torsion_lAt
                if (l == i)   cycle torsion_lAt
                if (l == j)   cycle torsion_lAt
                if (l == k)   cycle torsion_lAt
-               lr=itabrow(at(l))
+               lr = itabrow(at(l))
 !
-               if(lcutoff(l,i)) cycle torsion_lAt
-               if(lcutoff(l,k)) cycle torsion_lAt
-               if(lcutoff(l,j)) cycle torsion_lAt
+               if (lcutoff(l, i)) cycle torsion_lAt
+               if (lcutoff(l, k)) cycle torsion_lAt
+               if (lcutoff(l, j)) cycle torsion_lAt
 
-               txyz(:,4)=xyz(:,l)
+               txyz(:, 4) = xyz(:, l)
 
-               rij=xyz(:,i)-xyz(:,j)
-               d0ij=dav(ir,jr)
-               rij0=rav(ir,jr)
-               aij =aav(ir,jr)
+               rij = xyz(:, i) - xyz(:, j)
+               d0ij = dav(ir, jr)
+               rij0 = rav(ir, jr)
+               aij = aav(ir, jr)
 
-               rjk=xyz(:,j)-xyz(:,k)
-               d0jk=dav(jr,kr)
-               rjk0=rav(jr,kr)
-               ajk =aav(jr,kr)
+               rjk = xyz(:, j) - xyz(:, k)
+               d0jk = dav(jr, kr)
+               rjk0 = rav(jr, kr)
+               ajk = aav(jr, kr)
 
-               rkl=xyz(:,k)-xyz(:,l)
-               d0kl=dav(kr,lr)
-               rkl0=rav(kr,lr)
-               akl =aav(kr,lr)
+               rkl = xyz(:, k) - xyz(:, l)
+               d0kl = dav(kr, lr)
+               rkl0 = rav(kr, lr)
+               akl = aav(kr, lr)
 
-               rij2=dot_product(rij,rij)
-               rjk2=dot_product(rjk,rjk)
-               rkl2=dot_product(rkl,rkl)
+               rij2 = dot_product(rij, rij)
+               rjk2 = dot_product(rjk, rjk)
+               rkl2 = dot_product(rkl, rkl)
 
-               cosfi2=dot_product(rij,rjk)/sqrt(rij2*rjk2)
+               cosfi2 = dot_product(rij, rjk) / sqrt(rij2*rjk2)
                if (abs(cosfi2) > cosfi_max) cycle torsion_lAt
-               cosfi3=dot_product(rkl,rjk)/sqrt(rkl2*rjk2)
+               cosfi3 = dot_product(rkl, rjk) / sqrt(rkl2*rjk2)
                if (abs(cosfi3) > cosfi_max) cycle torsion_lAt
 
-               gij = fk_lindh(aij,rij0,rij2) &
-                  + 0.5_wp*kd * fk_vdw(4.0_wp,d0ij,rij2)
-               gjk = fk_lindh(ajk,rjk0,rjk2) &
-                  + 0.5_wp*kd * fk_vdw(4.0_wp,d0jk,rjk2)
-               gkl = fk_lindh(akl,rkl0,rkl2) &
-                  + 0.5_wp*kd * fk_vdw(4.0_wp,d0kl,rkl2)
+               gij = fk_lindh(aij, rij0, rij2) &
+                  + 0.5_wp * kd * fk_vdw(4.0_wp, d0ij, rij2)
+               gjk = fk_lindh(ajk, rjk0, rjk2) &
+                  + 0.5_wp * kd * fk_vdw(4.0_wp, d0jk, rjk2)
+               gkl = fk_lindh(akl, rkl0, rkl2) &
+                  + 0.5_wp * kd * fk_vdw(4.0_wp, d0kl, rkl2)
 
-               tij = force_constant * gij*gjk*gkl
+               tij = force_constant * gij * gjk * gkl
 
                c = bmat_torsion(txyz)
-               si = c(:,1)
-               sj = c(:,2)
-               sk = c(:,3)
-               sl = c(:,4)
-               brow12 = [si, sj, sk, sl]
+               brow12 = [c(:, 1), c(:, 2), c(:, 3), c(:, 4)]
                call bmat_accum_packed(n, hess, [i, j, k, l], brow12, tij)
 
             end do torsion_lAt
@@ -520,85 +491,84 @@ end subroutine torsion
 
 pure subroutine outofplane(self, xyz, n, hess, at, force_constant, kd, lcutoff)
    class(TLindhModelHessianBase), intent(in) :: self
-   integer, intent(in)    :: n
-   integer, intent(in)    :: at(n)
-   real(wp),intent(in)    :: xyz(3,n)
-   real(wp),intent(inout) :: hess((3*n)*(3*n+1)/2)
-   real(wp),intent(in)    :: force_constant
-   real(wp),intent(in)    :: kd
-   logical, intent(in)    :: lcutoff(n,n)
+   integer, intent(in) :: n
+   integer, intent(in) :: at(n)
+   real(wp), intent(in) :: xyz(3, n)
+   real(wp), intent(inout) :: hess((3*n)*(3*n + 1)/2)
+   real(wp), intent(in) :: force_constant
+   real(wp), intent(in) :: kd
+   logical, intent(in) :: lcutoff(n, n)
 
-   integer  :: i,ir,j,jr,k,kr,l,lr
+   integer :: i, ir, j, jr, k, kr, l, lr
    type(TLindhParameters) :: parameters
-   real(wp) :: aav(3,3), rav(3,3), dav(3,3), outofplane_kd
-   real(wp) :: txyz(3,4),c(3,4)
-   real(wp) :: rij(3),rij0,aij,rij2,gij,d0ij
-   real(wp) :: rik(3),rik0,aik,rik2,gik,d0ik
-   real(wp) :: ril(3),ril0,ail,ril2,gil,d0il
-   real(wp) :: cosfi2,cosfi3,cosfi4
-   real(wp) :: beta,tij,tau
-   real(wp) :: si(3),sj(3),sk(3),sl(3)
+   real(wp) :: aav(3, 3), rav(3, 3), dav(3, 3), outofplane_kd
+   real(wp) :: txyz(3, 4), c(3, 4)
+   real(wp) :: rij(3), rij0, aij, rij2, gij, d0ij
+   real(wp) :: rik(3), rik0, aik, rik2, gik, d0ik
+   real(wp) :: ril(3), ril0, ail, ril2, gil, d0il
+   real(wp) :: cosfi2, cosfi3, cosfi4
+   real(wp) :: tij, tau
    real(wp) :: brow12(12)
 
    parameters = self%get_parameters()
    aav = parameters%aav
    rav = parameters%rav
    dav = parameters%dav
-   outofplane_kd = parameters%outofplane_dispersion*kd
+   outofplane_kd = parameters%outofplane_dispersion * kd
 
 !! ------------------------------------------------------------------------
 !  Hessian for out-of-plane
 !! ------------------------------------------------------------------------
    outofplane_iAt: do i = 1, n
       ir = itabrow(at(i))
-      txyz(:,4) = xyz(:,i)
+      txyz(:, 4) = xyz(:, i)
       outofplane_jAt: do j = 1, n
          if (j == i) cycle outofplane_jAt
-         if(lcutoff(j,i)) cycle outofplane_jAt
+         if (lcutoff(j, i)) cycle outofplane_jAt
          jr = itabrow(at(j))
-         txyz(:,1) = xyz(:,j)
+         txyz(:, 1) = xyz(:, j)
          outofplane_kAt: do k = 1, n
             if (i == k) cycle outofplane_kAt
             if (j == k) cycle outofplane_kAt
-            if(lcutoff(k,i)) cycle outofplane_kAt
-            if(lcutoff(k,j)) cycle outofplane_kAt
+            if (lcutoff(k, i)) cycle outofplane_kAt
+            if (lcutoff(k, j)) cycle outofplane_kAt
             kr = itabrow(at(k))
-            txyz(:,2) = xyz(:,k)
+            txyz(:, 2) = xyz(:, k)
             outofplane_lAt: do l = 1, n
                lr = itabrow(at(l))
-               txyz(:,3) = xyz(:,l)
+               txyz(:, 3) = xyz(:, l)
                if (l == i) cycle outofplane_lAt
                if (l == j) cycle outofplane_lAt
                if (l == k) cycle outofplane_lAt
-               if(lcutoff(l,i)) cycle outofplane_lAt
-               if(lcutoff(l,k)) cycle outofplane_lAt
-               if(lcutoff(l,j)) cycle outofplane_lAt
+               if (lcutoff(l, i)) cycle outofplane_lAt
+               if (lcutoff(l, k)) cycle outofplane_lAt
+               if (lcutoff(l, j)) cycle outofplane_lAt
 
-               rij=xyz(:,i)-xyz(:,j)
-               d0ij=dav(ir,jr)
-               rij0=rav(ir,jr)
-               aij =aav(ir,jr)
+               rij = xyz(:, i) - xyz(:, j)
+               d0ij = dav(ir, jr)
+               rij0 = rav(ir, jr)
+               aij = aav(ir, jr)
 
-               rik=xyz(:,i)-xyz(:,k)
-               d0ik=dav(ir,kr)
-               rik0=rav(ir,kr)
-               aik =aav(ir,kr)
+               rik = xyz(:, i) - xyz(:, k)
+               d0ik = dav(ir, kr)
+               rik0 = rav(ir, kr)
+               aik = aav(ir, kr)
 
-               ril=xyz(:,i)-xyz(:,l)
-               d0il=dav(ir,lr)
-               ril0=rav(ir,lr)
-               ail =aav(ir,lr)
+               ril = xyz(:, i) - xyz(:, l)
+               d0il = dav(ir, lr)
+               ril0 = rav(ir, lr)
+               ail = aav(ir, lr)
 
-               rij2=dot_product(rij,rij)
-               rik2=dot_product(rik,rik)
-               ril2=dot_product(ril,ril)
+               rij2 = dot_product(rij, rij)
+               rik2 = dot_product(rik, rik)
+               ril2 = dot_product(ril, ril)
 
-               cosfi2=dot_product(rij,rik)/sqrt(rij2*rik2)
-               if (abs(abs(cosfi2)-1.0_wp) < 1.0e-1_wp) cycle outofplane_lAt
-               cosfi3=dot_product(rij,ril)/sqrt(rij2*ril2)
-               if (abs(abs(cosfi3)-1.0_wp) < 1.0e-1_wp) cycle outofplane_lAt
-               cosfi4=dot_product(rik,ril)/sqrt(rik2*ril2)
-               if (abs(abs(cosfi4)-1.0_wp) < 1.0e-1_wp) cycle outofplane_lAt
+               cosfi2 = dot_product(rij, rik) / sqrt(rij2*rik2)
+               if (abs(abs(cosfi2) - 1.0_wp) < 1.0e-1_wp) cycle outofplane_lAt
+               cosfi3 = dot_product(rij, ril) / sqrt(rij2*ril2)
+               if (abs(abs(cosfi3) - 1.0_wp) < 1.0e-1_wp) cycle outofplane_lAt
+               cosfi4 = dot_product(rik, ril) / sqrt(rik2*ril2)
+               if (abs(abs(cosfi4) - 1.0_wp) < 1.0e-1_wp) cycle outofplane_lAt
 
                gij = fk_lindh(aij, rij0, rij2) &
                   + 0.5_wp * outofplane_kd * fk_vdw(4.0_wp, d0ij, rij2)
@@ -610,14 +580,10 @@ pure subroutine outofplane(self, xyz, n, hess, at, force_constant, kd, lcutoff)
                tij = force_constant * gij * gik * gil
 
                tau = oop_angle(txyz)
-               if (abs(tau) > 45.0_wp * (pi/180.0_wp)) cycle outofplane_lAt
+               if (abs(tau) > 45.0_wp*(pi/180.0_wp)) cycle outofplane_lAt
 
                c = bmat_outofplane(txyz)
-               si = c(:, 4)
-               sj = c(:, 1)
-               sk = c(:, 2)
-               sl = c(:, 3)
-               brow12 = [si, sj, sk, sl]
+               brow12 = [c(:, 4), c(:, 1), c(:, 2), c(:, 3)]
                call bmat_accum_packed(n, hess, [i, j, k, l], brow12, tij)
 
             end do outofplane_lAt

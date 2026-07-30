@@ -50,7 +50,7 @@ module xtb_modelhessian_type
          !> Cartesian coordinates
          real(wp), intent(in) :: xyz(3, n)
          !> Packed Hessian updated in place
-         real(wp), intent(inout) :: hess((3*n)*(3*n+1)/2)
+         real(wp), intent(inout) :: hess((3*n)*(3*n + 1)/2)
          !> Atomic numbers
          integer, intent(in) :: at(n)
          !> Stretching force constant
@@ -77,7 +77,7 @@ module xtb_modelhessian_type
          !> Cartesian coordinates
          real(wp), intent(in) :: xyz(3, n)
          !> Packed Hessian updated in place
-         real(wp), intent(inout) :: hess((3*n)*(3*n+1)/2)
+         real(wp), intent(inout) :: hess((3*n)*(3*n + 1)/2)
          !> Atomic numbers
          integer, intent(in) :: at(n)
          !> Internal-coordinate force constant
@@ -99,7 +99,7 @@ module xtb_modelhessian_type
          !> Cartesian coordinates
          real(wp), intent(in) :: xyz(3, n)
          !> Packed Hessian updated in place
-         real(wp), intent(inout) :: hess((3*n)*(3*n+1)/2)
+         real(wp), intent(inout) :: hess((3*n)*(3*n + 1)/2)
          !> Atomic numbers
          integer, intent(in) :: at(n)
          !> Charge-dependent force constant
@@ -118,7 +118,7 @@ subroutine compute_packed(self, xyz, n, hess, at, modh)
    !> Cartesian coordinates
    real(wp), intent(in) :: xyz(3, n)
    !> Packed lower-triangle Hessian
-   real(wp), intent(out) :: hess((3*n)*(3*n+1)/2)
+   real(wp), intent(out) :: hess((3*n)*(3*n + 1)/2)
    !> Atomic numbers
    integer, intent(in) :: at(n)
    !> Model Hessian parameters
@@ -164,7 +164,7 @@ subroutine compute_dense(self, xyz, n, hess, at, modh)
    integer :: i, j, ij
    real(wp), allocatable :: packed(:)
 
-   allocate(packed((3*n)*(3*n+1)/2))
+   allocate(packed((3*n)*(3*n + 1)/2))
    call self%compute_packed(xyz, n, packed, at, modh)
 
    ij = 0
