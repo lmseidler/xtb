@@ -40,7 +40,7 @@ module test_model_hessian
    use xtb_type_setvar, only : modhess_setvar
    use xtb_test_molstock, only : getMolecule
    use xtb_type_environment, only : TEnvironment, init
-   implicit none
+   implicit none(type, external)
    private
    public :: collect_model_hessian
 
@@ -147,6 +147,8 @@ subroutine new_model_hessian(variant, model_hessian)
       allocate(TLindhModelHessian :: model_hessian)
    case(VAR_SWART)
       allocate(TSwartModelHessian :: model_hessian)
+   case default
+      error stop "Unknown model Hessian variant"
    end select
 end subroutine new_model_hessian
 
@@ -261,7 +263,7 @@ subroutine test_gff_h2o(error)
 
    call init(env)
    call getMolecule(mol, "h2o")
-   call newGFFCalculator(env, mol, calc, '.param_gfnff.xtb', .false.)
+   call newGFFCalculator(env, mol, calc, ".param_gfnff.xtb", .false.)
    call env%check(terminate)
    call check(error, terminate .eqv. .false.)
    if (allocated(error)) return
@@ -311,7 +313,7 @@ subroutine write_ref(path, packed)
 
    open(newunit=u, file=path, status="replace", action="write")
    do i = 1, size(packed)
-      write(u, '(ES25.17E3)') packed(i)
+      write(u, "(ES25.17E3)") packed(i)
    end do
    close(u)
 end subroutine write_ref
@@ -387,76 +389,76 @@ end subroutine compare_or_write_ref
 subroutine test_lindh_d2_h2o(error)
    type(error_type), allocatable, intent(out) :: error
    call test_mh(error, "h2o", VAR_LINDH_D2, default_modh(), "lindh_d2_h2o")
-end subroutine
+end subroutine test_lindh_d2_h2o
 
 subroutine test_lindh_d2_mindless01(error)
    type(error_type), allocatable, intent(out) :: error
    call test_mh(error, "mindless01", VAR_LINDH_D2, default_modh(), "lindh_d2_mindless01")
-end subroutine
+end subroutine test_lindh_d2_mindless01
 
 subroutine test_lindh_d2_caffeine(error)
    type(error_type), allocatable, intent(out) :: error
    call test_mh(error, "caffeine", VAR_LINDH_D2, default_modh(), "lindh_d2_caffeine")
-end subroutine
+end subroutine test_lindh_d2_caffeine
 
 subroutine test_lindh_d2_mgh2(error)
    type(error_type), allocatable, intent(out) :: error
    call test_mh(error, "mgh2", VAR_LINDH_D2, default_modh(), "lindh_d2_mgh2")
-end subroutine
+end subroutine test_lindh_d2_mgh2
 
 subroutine test_lindh_h2o(error)
    type(error_type), allocatable, intent(out) :: error
    call test_mh(error, "h2o", VAR_LINDH, default_modh(), "lindh_h2o")
-end subroutine
+end subroutine test_lindh_h2o
 
 subroutine test_lindh_mindless01(error)
    type(error_type), allocatable, intent(out) :: error
    call test_mh(error, "mindless01", VAR_LINDH, default_modh(), "lindh_mindless01")
-end subroutine
+end subroutine test_lindh_mindless01
 
 subroutine test_lindh_caffeine(error)
    type(error_type), allocatable, intent(out) :: error
    call test_mh(error, "caffeine", VAR_LINDH, default_modh(), "lindh_caffeine")
-end subroutine
+end subroutine test_lindh_caffeine
 
 subroutine test_lindh_mgh2(error)
    type(error_type), allocatable, intent(out) :: error
    call test_mh(error, "mgh2", VAR_LINDH, default_modh(), "lindh_mgh2")
-end subroutine
+end subroutine test_lindh_mgh2
 
 subroutine test_swart_h2o(error)
    type(error_type), allocatable, intent(out) :: error
    call test_mh(error, "h2o", VAR_SWART, default_modh(), "swart_h2o")
-end subroutine
+end subroutine test_swart_h2o
 
 subroutine test_swart_mindless01(error)
    type(error_type), allocatable, intent(out) :: error
    call test_mh(error, "mindless01", VAR_SWART, default_modh(), "swart_mindless01")
-end subroutine
+end subroutine test_swart_mindless01
 
 subroutine test_swart_caffeine(error)
    type(error_type), allocatable, intent(out) :: error
    call test_mh(error, "caffeine", VAR_SWART, default_modh(), "swart_caffeine")
-end subroutine
+end subroutine test_swart_caffeine
 
 subroutine test_swart_mgh2(error)
    type(error_type), allocatable, intent(out) :: error
    call test_mh(error, "mgh2", VAR_SWART, default_modh(), "swart_mgh2")
-end subroutine
+end subroutine test_swart_mgh2
 
 subroutine test_lindh_d2_caffeine_oop(error)
    type(error_type), allocatable, intent(out) :: error
    call test_mh(error, "caffeine", VAR_LINDH_D2, oop_modh(), "lindh_d2_caffeine_oop")
-end subroutine
+end subroutine test_lindh_d2_caffeine_oop
 
 subroutine test_lindh_caffeine_oop(error)
    type(error_type), allocatable, intent(out) :: error
    call test_mh(error, "caffeine", VAR_LINDH, oop_modh(), "lindh_caffeine_oop")
-end subroutine
+end subroutine test_lindh_caffeine_oop
 
 subroutine test_swart_caffeine_oop(error)
    type(error_type), allocatable, intent(out) :: error
    call test_mh(error, "caffeine", VAR_SWART, oop_modh(), "swart_caffeine_oop")
-end subroutine
+end subroutine test_swart_caffeine_oop
 
 end module test_model_hessian
