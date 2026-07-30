@@ -249,10 +249,6 @@ contains
             if (.not. odlr_valid) then
                call env%error("O1NumHess does not support frozen atoms/PTB", source)
             end if
-            call env%warning("O1NumHess does not support calculation of IR or Raman activities", source)
-            if (set%step_hess >= 0.0005_wp) then
-               call env%warning("Step size for O1NumHess can be chosen to be much smaller (recommended: 1.0e-6)", source)
-            end if
          else if(set%mode_extrun == p_ext_ptb) then
             set%mode_extrun = p_ext_xtb
             set%ptbsetup%ptb_in_hessian = .true.

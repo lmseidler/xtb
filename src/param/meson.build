@@ -14,6 +14,7 @@
 # along with xtb.  If not, see <https://www.gnu.org/licenses/>.
 
 srcs += files(
+  'model_hessian.f90',
   'atomicmass.f90',
   'atomicrad.f90',
   'covalentradd3.f90',

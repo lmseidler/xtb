@@ -32,8 +32,9 @@ if not testdrive_dep.found()
 endif
 
 tests = [
-  'atomlist',
-  'coordinationnumber',
+   'atomlist',
+   'bmatrix',
+   'coordinationnumber',
   'coulomb',
   'dftd3',
   'dftd4',
@@ -46,10 +47,11 @@ tests = [
   'hessian',
   'iff',
   'latticepoint',
-  'molecule',
-  'oniom',
-  'dipro',
-  'pbc-tools',
+   'molecule',
+   'model-hessian',
+   'oniom',
+   'dipro',
+   'pbc-tools',
   'peeq',
   'repulsion',
   'symmetry',
