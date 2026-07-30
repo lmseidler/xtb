@@ -1,0 +1,245 @@
+{
+  "baseline": {
+    "caffeine/wicz/1": {
+      "natoms": 24,
+      "ndispl": 42,
+      "phases": {
+        "TOTAL": 0.943,
+        "dirgen": 0.067,
+        "grad_evals": 0.666,
+        "local_solve": 0.024,
+        "mapback+misc": 0.0,
+        "neg_mode": 0.165,
+        "ref_singlept": 0.017,
+        "setup": 0.004
+      },
+      "wall": 1.135
+    },
+    "caffeine/wicz/28": {
+      "natoms": 24,
+      "ndispl": 42,
+      "phases": {
+        "TOTAL": 0.313,
+        "dirgen": 0.068,
+        "grad_evals": 0.063,
+        "local_solve": 0.028,
+        "mapback+misc": 0.0,
+        "neg_mode": 0.136,
+        "ref_singlept": 0.013,
+        "setup": 0.005
+      },
+      "wall": 0.501
+    },
+    "caffeine/xtb/1": {
+      "natoms": 24,
+      "ndispl": 61,
+      "phases": {
+        "TOTAL": 1.88,
+        "dirgen": 0.695,
+        "grad_evals": 1.08,
+        "local_solve": 0.006,
+        "neg_mode": 0.081,
+        "ref_singlept": 0.017,
+        "setup": 0.001
+      },
+      "wall": 2.073
+    },
+    "caffeine/xtb/28": {
+      "natoms": 24,
+      "ndispl": 61,
+      "phases": {
+        "TOTAL": 1.224,
+        "dirgen": 0.15,
+        "grad_evals": 1.003,
+        "local_solve": 0.011,
+        "neg_mode": 0.045,
+        "ref_singlept": 0.014,
+        "setup": 0.001
+      },
+      "wall": 1.442
+    },
+    "taxol/wicz/1": {
+      "natoms": 113,
+      "ndispl": 114,
+      "phases": {
+        "TOTAL": 50.259,
+        "dirgen": 5.673,
+        "grad_evals": 37.947,
+        "local_solve": 0.998,
+        "mapback+misc": -0.0,
+        "neg_mode": 5.209,
+        "ref_singlept": 0.305,
+        "setup": 0.127
+      },
+      "wall": 64.55
+    },
+    "taxol/wicz/28": {
+      "natoms": 113,
+      "ndispl": 114,
+      "phases": {
+        "TOTAL": 15.428,
+        "dirgen": 8.65,
+        "grad_evals": 3.238,
+        "local_solve": 0.982,
+        "mapback+misc": 0.001,
+        "neg_mode": 2.289,
+        "ref_singlept": 0.133,
+        "setup": 0.135
+      },
+      "wall": 23.36
+    },
+    "taxol/xtb/1": {
+      "natoms": 113,
+      "ndispl": 135,
+      "phases": {
+        "TOTAL": 72.708,
+        "dirgen": 23.267,
+        "grad_evals": 46.515,
+        "local_solve": 0.288,
+        "neg_mode": 2.322,
+        "ref_singlept": 0.304,
+        "setup": 0.012
+      },
+      "wall": 87.18
+    },
+    "taxol/xtb/28": {
+      "natoms": 113,
+      "ndispl": 133,
+      "phases": {
+        "TOTAL": 19.116,
+        "dirgen": 3.959,
+        "grad_evals": 14.478,
+        "local_solve": 0.163,
+        "neg_mode": 0.4,
+        "ref_singlept": 0.105,
+        "setup": 0.011
+      },
+      "wall": 26.923
+    }
+  },
+  "build_dir": "build",
+  "out_dir": "/home/polt/xtb/docs/profiling/o1numhess-20260626-102720",
+  "repo": "/home/polt/xtb",
+  "results": [
+    {
+      "case": "caffeine",
+      "gen_displdir": {
+        "avg_nnb": 29.44,
+        "diag": 0.017,
+        "evals": 1440,
+        "extract": 0.002,
+        "max_nnb": 39,
+        "orth": 0.027,
+        "proj": 0.022,
+        "sign": 0.0,
+        "wall": 0.069
+      },
+      "imag_freqs": 1,
+      "natoms": 24,
+      "ndispl": 40,
+      "phases": {
+        "TOTAL": 1.265,
+        "dirgen": 0.069,
+        "grad_evals": 0.979,
+        "local_solve": 0.064,
+        "neg_mode": 0.132,
+        "ref_singlept": 0.02,
+        "setup": 0.001
+      },
+      "returncode": 0,
+      "threads": 1,
+      "wall": 1.339121961966157
+    },
+    {
+      "case": "caffeine",
+      "gen_displdir": {
+        "avg_nnb": 29.44,
+        "diag": 0.028,
+        "evals": 1440,
+        "extract": 0.004,
+        "max_nnb": 39,
+        "orth": 0.024,
+        "proj": 0.037,
+        "sign": 0.0,
+        "wall": 0.013
+      },
+      "imag_freqs": 1,
+      "natoms": 24,
+      "ndispl": 40,
+      "phases": {
+        "TOTAL": 0.396,
+        "dirgen": 0.013,
+        "grad_evals": 0.169,
+        "local_solve": 0.065,
+        "neg_mode": 0.134,
+        "ref_singlept": 0.014,
+        "setup": 0.001
+      },
+      "returncode": 0,
+      "threads": 28,
+      "wall": 0.46654783200938255
+    },
+    {
+      "case": "taxol",
+      "gen_displdir": {
+        "avg_nnb": 62.85,
+        "diag": 1.296,
+        "evals": 15762,
+        "extract": 0.082,
+        "max_nnb": 108,
+        "orth": 3.301,
+        "proj": 2.849,
+        "sign": 0.016,
+        "wall": 7.57
+      },
+      "imag_freqs": 2,
+      "natoms": 113,
+      "ndispl": 117,
+      "phases": {
+        "TOTAL": 115.525,
+        "dirgen": 7.571,
+        "grad_evals": 93.594,
+        "local_solve": 2.343,
+        "neg_mode": 11.444,
+        "ref_singlept": 0.561,
+        "setup": 0.012
+      },
+      "returncode": 0,
+      "threads": 1,
+      "wall": 117.66617399593815
+    },
+    {
+      "case": "taxol",
+      "gen_displdir": {
+        "avg_nnb": 62.85,
+        "diag": 2.565,
+        "evals": 15762,
+        "extract": 0.237,
+        "max_nnb": 108,
+        "orth": 5.323,
+        "proj": 5.626,
+        "sign": 0.013,
+        "wall": 0.657
+      },
+      "imag_freqs": 2,
+      "natoms": 113,
+      "ndispl": 117,
+      "phases": {
+        "TOTAL": 18.809,
+        "dirgen": 0.658,
+        "grad_evals": 8.87,
+        "local_solve": 2.478,
+        "neg_mode": 6.439,
+        "ref_singlept": 0.355,
+        "setup": 0.009
+      },
+      "returncode": 0,
+      "threads": 28,
+      "wall": 20.585008941940032
+    }
+  ],
+  "threads": [
+    1,
+    28
+  ]
+}

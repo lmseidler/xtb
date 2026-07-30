@@ -1,0 +1,4 @@
+ninja: Entering directory `/home/polt/xtb/build'
+ninja: no work to do.
+INFO: autodetecting backend as ninja
+INFO: calculating backend command to run: /home/polt/.conda/envs/gnu-15/bin/ninja -C /home/polt/xtb/build

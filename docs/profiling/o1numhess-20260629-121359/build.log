@@ -1,0 +1,10 @@
+ninja: Entering directory `/home/polt/xtb/build'
+[1/44] Compiling Fortran object libxtb.so.6.7.1.p/src_o1numhess.f90.o
+[2/44] Compiling Fortran object libxtb.so.6.7.1.p/src_type_calculator.f90.o
+[3/7] Linking static target libxtb.a
+[4/7] Linking target libxtb.so.6.7.1
+[5/7] Linking target test/unit/tester
+[6/7] Linking target xtb
+[7/7] Linking target test/api/xtb_c_test
+INFO: autodetecting backend as ninja
+INFO: calculating backend command to run: /home/polt/.conda/envs/gnu-15/bin/ninja -C /home/polt/xtb/build
