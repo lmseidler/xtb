@@ -378,7 +378,7 @@ end subroutine add_neighbor
 
 !> Calculate displacement vectors for the gradient derivatives
 subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
-                        eps, eps2, displdir, ndispl_final, unit)
+                        eps, eps2, displdir, ndispl_final)
    integer, intent(in) :: n, ndispl0, max_nb
    !> Initial guess Hessian
    real(wp), intent(in) :: h0(n, n)
@@ -392,9 +392,6 @@ subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
    real(wp), intent(inout) :: displdir(n, n)
    !> Final number of displacements
    integer, intent(out) :: ndispl_final
-   !> Optional unit for profiling output
-   integer, intent(in), optional :: unit
-
    ! Local variables
    integer :: i, j, k, p, q, nnb, info, n_curr, idx, locind, qn, m_eig
    integer :: nb_idx(max_nb)
@@ -405,10 +402,6 @@ subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
    real(wp), allocatable :: locev_store(:, :)
    logical :: done
    real(wp), parameter :: orth_tol = 1.0e-10_wp
-   integer :: prof_rate, prof_t0, prof_t1, prof_s0, prof_s1
-   integer :: prof_evals, prof_sum_nnb, prof_max_nnb
-   integer :: clk_a, clk_b, clk_c, clk_d, clk_e
-   real(wp) :: prof_extract, prof_orth, prof_proj, prof_diag, prof_sign, prof_wall
    ! Thread-private work arrays for parallel region
    real(wp), allocatable :: submat_local(:, :), projmat_local(:, :)
    real(wp), allocatable :: vec_subset_local(:, :), tmp_local(:, :), work_local(:)
@@ -423,16 +416,6 @@ subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
    end do
 
    ndispl_final = ndispl0
-   call system_clock(prof_t0, prof_rate)
-   prof_extract = 0.0_wp
-   prof_orth = 0.0_wp
-   prof_proj = 0.0_wp
-   prof_diag = 0.0_wp
-   prof_sign = 0.0_wp
-   prof_evals = 0
-   prof_sum_nnb = 0
-   prof_max_nnb = 0
-
    ! Storage for eigenvectors computed in parallel
    allocate(locev_store(max_nb, n))
 
@@ -442,14 +425,11 @@ subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
    !$omp parallel default(none) &
    !$omp shared(n, ndispl0, nblist, nbcounts, h0, displdir, max_nb, eye) &
    !$omp shared(locev_store, ev, coverage, done, ndispl_final) &
-   !$omp shared(eps, eps2, prof_rate, prof_sign) &
+   !$omp shared(eps, eps2) &
    !$omp private(j, p, q, k, nnb, nb_idx, loceigs, locind, info, idx) &
    !$omp private(n_curr, qn, m_eig, norm_ev1, norm_ev2, v_norm, d_dot, u2, locev) &
    !$omp private(submat_local, projmat_local, vec_subset_local, tmp_local, work_local) &
-   !$omp private(eigvec_local, iwork_local, isuppz_local, prof_s0, prof_s1) &
-   !$omp private(clk_a, clk_b, clk_c, clk_d, clk_e) &
-   !$omp reduction(+:prof_extract, prof_orth, prof_proj, prof_diag, prof_evals, prof_sum_nnb) &
-   !$omp reduction(max:prof_max_nnb)
+   !$omp private(eigvec_local, iwork_local, isuppz_local)
 
    allocate(submat_local(max_nb, max_nb))
    allocate(projmat_local(max_nb, n))
@@ -478,11 +458,6 @@ subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
 
          ! Skip if subspace saturated
          if (nnb <= n_curr) cycle
-         prof_evals = prof_evals + 1
-         prof_sum_nnb = prof_sum_nnb + nnb
-         prof_max_nnb = max(prof_max_nnb, nnb)
-         call system_clock(clk_a)
-
          ! 1. Extract submatrix H0 (submat_p)
          do p = 1, nnb
             do q = 1, nnb
@@ -497,8 +472,6 @@ subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
                vec_subset_local(q, p) = displdir(nb_idx(q), p)
             end do
          end do
-         call system_clock(clk_b)
-
          if (n_curr > 0) then
             qn = 0
             do p = 1, n_curr
@@ -538,8 +511,6 @@ subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
             tmp_local(1:nnb, locind) = locev(1:nnb) / sqrt(u2)
             if (locind >= nnb - qn) exit
          end do
-         call system_clock(clk_c)
-
          if (locind < 1) then
             locev_store(1:nnb, j) = 0.0_wp
             cycle
@@ -553,19 +524,11 @@ subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
          ! Symmetrize
          projmat_local(:locind, :locind) = 0.5_wp * (projmat_local(:locind, :locind) + &
             & transpose(projmat_local(:locind, :locind)))
-         call system_clock(clk_d)
-
          ! 3. Largest-eigenpair diagonalization
          call lapack_syevr("V", "I", "U", locind, projmat_local, max_nb, &
             & 0.0_wp, 0.0_wp, locind, locind, 0.0_wp, m_eig, loceigs, eigvec_local, &
             & max_nb, isuppz_local, work_local, size(work_local), &
             & iwork_local, size(iwork_local), info)
-         call system_clock(clk_e)
-         prof_extract = prof_extract + real(clk_b - clk_a, wp) / real(prof_rate, wp)
-         prof_orth = prof_orth + real(clk_c - clk_b, wp) / real(prof_rate, wp)
-         prof_proj = prof_proj + real(clk_d - clk_c, wp) / real(prof_rate, wp)
-         prof_diag = prof_diag + real(clk_e - clk_d, wp) / real(prof_rate, wp)
-
          ! Store the lifted eigenvector for the serial phase.
          locev_store(1:nnb, j) = 0.0_wp
          do p = 1, locind
@@ -576,7 +539,6 @@ subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
 
       ! Serial phase: sign fixing and accumulation
       !$omp single
-      call system_clock(prof_s0)
       do j = 1, n
          nnb = nbcounts(j)
          nb_idx(:nnb) = nblist(j)%neighbors(:nnb)
@@ -647,8 +609,6 @@ subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
          displdir(:, n_curr+1) = ev
          ndispl_final = n_curr + 1
       end if
-      call system_clock(prof_s1)
-      prof_sign = prof_sign + real(prof_s1 - prof_s0, wp) / real(prof_rate, wp)
       !$omp end single
    end do
 
@@ -657,19 +617,6 @@ subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
    !$omp end parallel
 
    deallocate(eye, locev_store)
-   call system_clock(prof_t1)
-   prof_wall = real(prof_t1 - prof_t0, wp) / real(prof_rate, wp)
-   if (present(unit)) then
-      if (unit > 0) then
-         write(unit, '("PROF gen_displdir: wall=",f10.3," s, evals=",i0,'//&
-            & '", avg_nnb=",f8.2,", max_nnb=",i0)') prof_wall, prof_evals, &
-            & real(prof_sum_nnb, wp) / real(max(1, prof_evals), wp), prof_max_nnb
-         write(unit, '("PROF gen_displdir: extract=",f10.3," s, orth=",f10.3,'//&
-            & '" s, proj=",f10.3," s, diag=",f10.3," s, sign=",f10.3," s")') &
-            & prof_extract, prof_orth, prof_proj, prof_diag, prof_sign
-         flush(unit)
-      end if
-   end if
 end subroutine gen_displdir
 
 !> Find significant imaginary modes of a Cartesian Hessian using the same

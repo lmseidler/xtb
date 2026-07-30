@@ -297,18 +297,9 @@ subroutine hessian_odlr(self, env, mol0, chk0, step, hess, final_err, dipgrad, p
    integer, allocatable :: nbcounts(:)
    integer :: N, i, j, k, Ntr, info, lwork, ndispl_final, max_nb, ndispl0, nimg, rmode
    ! iterative repair locals
-   integer :: neg_round, nadd, nmodes_det, prev_nimg, total_repair, ndiag_window
-   real(wp), allocatable :: cand_modes(:, :), cand_freqs(:), sel_modes(:, :), sel_freqs(:), vscratch(:)
-   real(wp) :: min_freq_round, vdot
-   character(len=24) :: neg_stop_reason
-
-   ! ===== PROFILING TIMERS =====
-   integer :: clk_t0, clk_t1, clk_rate
-   real(wp) :: t_setup, t_dirgen, t_refsp, t_gradeval, t_local, t_lrcorr, t_negmode, t_total
-   call system_clock(clk_t0, clk_rate)
-   t_setup = 0.0_wp; t_dirgen = 0.0_wp; t_refsp = 0.0_wp; t_gradeval = 0.0_wp
-   t_local = 0.0_wp; t_lrcorr = 0.0_wp; t_negmode = 0.0_wp
-   ! ============================
+   integer :: neg_round, nadd, nmodes_det, prev_nimg, ndiag_window
+   real(wp), allocatable :: cand_modes(:, :), cand_freqs(:), sel_modes(:, :), vscratch(:)
+   real(wp) :: vdot
 
    ! ========== INITIALIZATION ==========
    N = 3*mol0%n
@@ -332,21 +323,12 @@ subroutine hessian_odlr(self, env, mol0, chk0, step, hess, final_err, dipgrad, p
 
    ! calculate unperturbed gradient
    allocate (tmp_grad(3, mol0%n))
-   ! ===== PROFILING: end setup, start ref singlepoint =====
-   call system_clock(clk_t1)
-   t_setup = real(clk_t1 - clk_t0, wp)/real(clk_rate, wp)
-   call system_clock(clk_t0)
    call self%singlepoint(env, mol, chk, -1, .true., energy, tmp_grad, sigma, egap, res)
    g0 = reshape(tmp_grad, [N])
    dip0 = res%dipole
    alpha0 = res%alpha
    do_polgrad = present(polgrad)
    do_dipgrad = present(dipgrad) .or. do_polgrad
-   ! ===== PROFILING: end ref singlepoint, start gradeval (rot/vib) =====
-   call system_clock(clk_t1)
-   t_refsp = real(clk_t1 - clk_t0, wp)/real(clk_rate, wp)
-   call system_clock(clk_t0)
-
    ! setup effective distmat
    allocate (distmat(N, N))
    do i = 1, mol0%n
@@ -474,11 +456,6 @@ subroutine hessian_odlr(self, env, mol0, chk0, step, hess, final_err, dipgrad, p
    call get_gradient_derivs(self, env, step, Ntr, Ntr + 1, displdir, mol0, chk0, g0, .true., g, &
       & dip0, alpha0, dipdir, poldir)
 
-   ! ===== PROFILING: end gradeval (rot/vib), start dirgen =====
-   call system_clock(clk_t1)
-   t_gradeval = real(clk_t1 - clk_t0, wp)/real(clk_rate, wp)
-   call system_clock(clk_t0)
-
    ! generate remaining displdirs based on the vdW near-range N^(1)
    delta_r1 = 1.0_wp
    if (mol0%n >= 100) delta_r1 = 2.0_wp
@@ -492,21 +469,11 @@ subroutine hessian_odlr(self, env, mol0, chk0, step, hess, final_err, dipgrad, p
 
    ! populate displdir
    ndispl0 = Ntr + 1
-   call gen_displdir(N, ndispl0, h0, max_nb, neighborlist, nbcounts, eps2, eps, displdir, ndispl_final, env%unit)
+   call gen_displdir(N, ndispl0, h0, max_nb, neighborlist, nbcounts, eps2, eps, displdir, ndispl_final)
 
    ! ========== GRADIENT DERIVATIVES ==========
-   ! write(env%unit, '(A)') "Calculating gradient derivatives"
-   ! ===== PROFILING: end dirgen, start gradeval (main) =====
-   call system_clock(clk_t1)
-   t_dirgen = real(clk_t1 - clk_t0, wp)/real(clk_rate, wp)
-   call system_clock(clk_t0)
    call get_gradient_derivs(self, env, step, ndispl0, ndispl_final, displdir, mol0, chk0, g0, .false., g, &
       & dip0, alpha0, dipdir, poldir)
-
-   ! ===== PROFILING: end gradeval (main), start local solve =====
-   call system_clock(clk_t1)
-   t_gradeval = t_gradeval + real(clk_t1 - clk_t0, wp)/real(clk_rate, wp)
-   call system_clock(clk_t0)
 
    ! ========== FINAL HESSIAN ==========
    ! construct hessian from local hessian and odlr correction
@@ -516,24 +483,16 @@ subroutine hessian_odlr(self, env, mol0, chk0, step, hess, final_err, dipgrad, p
    ! compute low rank correction
    call lr_loop(env, ndispl_final, g, hess, displdir, final_err)
 
-   ! ===== PROFILING: end local solve, start neg-mode (diag+rerun) =====
-   call system_clock(clk_t1)
-   t_local = real(clk_t1 - clk_t0, wp)/real(clk_rate, wp)
-   call system_clock(clk_t0)
-
    call env%check(terminate_run)
    if (terminate_run) then
       return
    end if
 
-   total_repair = 0
-   neg_stop_reason = "none"
-
    if (iterative_neg_mode .and. .not. linear) then
       ! iterative projected imaginary-frequency repair (plan: iterative-imaginary-frequency)
       ndiag_window = min(N, max_neg_add_per_round + 6)
       allocate (cand_modes(N, ndiag_window), cand_freqs(ndiag_window))
-      allocate (sel_modes(N, max_neg_add_per_round), sel_freqs(max_neg_add_per_round))
+      allocate (sel_modes(N, max_neg_add_per_round))
       allocate (vscratch(N))
       prev_nimg = huge(1)
 
@@ -543,19 +502,12 @@ subroutine hessian_odlr(self, env, mol0, chk0, step, hess, final_err, dipgrad, p
          call env%check(terminate_run)
          if (terminate_run) exit
 
-         if (nmodes_det == 0) then
-            neg_stop_reason = "converged"
-            exit
-         end if
-         if (nmodes_det >= prev_nimg .and. neg_round > 1) then
-            neg_stop_reason = "stagnation"
-            exit
-         end if
+         if (nmodes_det == 0) exit
+         if (nmodes_det >= prev_nimg .and. neg_round > 1) exit
          prev_nimg = nmodes_det
 
          ! select & orthogonalize candidates against existing displdir and each other
          nadd = 0
-         min_freq_round = huge(1.0_wp)
          do j = 1, nmodes_det
             if (nadd >= max_neg_add_per_round) exit
             if (ndispl_final + nadd >= N) exit
@@ -573,20 +525,13 @@ subroutine hessian_odlr(self, env, mol0, chk0, step, hess, final_err, dipgrad, p
             if (dist < eps) cycle
             nadd = nadd + 1
             sel_modes(:, nadd) = vscratch/dist
-            sel_freqs(nadd) = cand_freqs(j)
-            min_freq_round = min(min_freq_round, cand_freqs(j))
          end do
 
-         if (nadd == 0) then
-            neg_stop_reason = "no_new_modes"
-            exit
-         end if
+         if (nadd == 0) exit
 
          displdir(:, ndispl_final + 1:ndispl_final + nadd) = sel_modes(:, 1:nadd)
          ndispl0 = ndispl_final
          ndispl_final = ndispl_final + nadd
-         total_repair = total_repair + nadd
-
          call get_gradient_derivs(self, env, step, ndispl0, ndispl_final, &
             & displdir, mol0, chk0, g0, .true., g, dip0, alpha0, dipdir, poldir)
          call env%check(terminate_run)
@@ -594,19 +539,7 @@ subroutine hessian_odlr(self, env, mol0, chk0, step, hess, final_err, dipgrad, p
          call gen_local_hessian(env, ndispl_final, distmat, displdir, g, dmax, hess)
          call lr_loop(env, ndispl_final, g, hess, displdir, final_err)
 
-         if (env%unit > 0) then
-            write (env%unit, '("PROF neg_mode: round=",i0,", nimg=",i0,", nadd=",i0,", min_freq=",f0.1," cm-1")') &
-               & neg_round, nmodes_det, nadd, min_freq_round
-            flush (env%unit)
-         end if
       end do
-
-      if (neg_stop_reason == "none") neg_stop_reason = "max_rounds"
-      if (env%unit > 0) then
-         write (env%unit, '("PROF neg_mode: stop=",a,", total_repair=",i0,", doublesided=T")') &
-            & trim(neg_stop_reason), total_repair
-         flush (env%unit)
-      end if
 
    else
       ! old one-shot raw-eigenvalue repair (fallback: linear molecules or disabled)
@@ -651,25 +584,6 @@ subroutine hessian_odlr(self, env, mol0, chk0, step, hess, final_err, dipgrad, p
       polgrad = polgrad + prop_tmp
       deallocate (prop_tmp)
    end if
-
-   ! ===== PROFILING: end neg-mode, final report =====
-   call system_clock(clk_t1)
-   t_negmode = real(clk_t1 - clk_t0, wp)/real(clk_rate, wp)
-   t_total = t_setup + t_refsp + t_gradeval + t_dirgen + t_local + t_negmode
-   if (env%unit > 0) then
-      write (env%unit, '("========================================================")')
-      write (env%unit, '("PROF odlrhessian: natoms=",i0,", ndispl=",i0)') mol0%n, ndispl_final
-      write (env%unit, '("PROF odlrhessian: setup        = ",f10.3," s")') t_setup
-      write (env%unit, '("PROF odlrhessian: ref_singlept = ",f10.3," s")') t_refsp
-      write (env%unit, '("PROF odlrhessian: grad_evals   = ",f10.3," s")') t_gradeval
-      write (env%unit, '("PROF odlrhessian: dirgen       = ",f10.3," s")') t_dirgen
-      write (env%unit, '("PROF odlrhessian: local_solve  = ",f10.3," s")') t_local
-      write (env%unit, '("PROF odlrhessian: neg_mode     = ",f10.3," s")') t_negmode
-      write (env%unit, '("PROF odlrhessian: TOTAL        = ",f10.3," s")') t_total
-      write (env%unit, '("========================================================")')
-      flush (env%unit)
-   end if
-   ! ================================
 
 end subroutine hessian_odlr
 
