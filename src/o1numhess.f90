@@ -27,7 +27,7 @@ module xtb_o1numhess
    use xtb_freq_project, only : trproj
    use xtb_param_covalentrad, only : get_cov_rad
    use xtb_param_vdwradd3, only : getVanDerWaalsRadD3
-   implicit none
+   implicit none(type, external)
    private
 
    public :: adj_list
@@ -41,6 +41,7 @@ module xtb_o1numhess
    abstract interface
       subroutine matvec_operator(x, y, env, ctx)
          import :: wp, TEnvironment
+         implicit none(type, external)
          real(wp), intent(in) :: x(:)
          real(wp), intent(inout) :: y(:)
          type(TEnvironment), intent(inout) :: env
@@ -60,7 +61,7 @@ module xtb_o1numhess
       real(wp), allocatable :: f2(:, :)
    end type odlr_operator_data
 
-   character(len=*), parameter :: source = 'xtb_o1numhess'
+   character(len=*), parameter :: source = "xtb_o1numhess"
 
 contains
 
@@ -98,7 +99,7 @@ subroutine gen_local_hessian(env, ndispl_final, distmat, displdir, g, dmax, hess
    ctx%displdir => displdir
 
    ! Calculate Regularization Term W2
-   ctx%W2 = lam * max(0.0_wp, distmat(:, :)-dmax)**(2.0_wp*bet)
+   ctx%W2 = lam * max(0.0_wp, distmat(:, :) - dmax)**(2.0_wp*bet)
 
    ! Calculate rhs
    allocate(rhs(N, N))
@@ -107,7 +108,7 @@ subroutine gen_local_hessian(env, ndispl_final, distmat, displdir, g, dmax, hess
 
    ! Masks and Packing
    allocate(ctx%mask(N, N))
-   ctx%mask = (distmat < (dmax+ddmax))
+   ctx%mask = (distmat < (dmax + ddmax))
    do i = 2, N
       ctx%mask(i, 1:i-1) = .false.
    end do
@@ -123,7 +124,7 @@ subroutine gen_local_hessian(env, ndispl_final, distmat, displdir, g, dmax, hess
    call cg(env, odlr_operator, ndim, rhsv, sol, info, ctx=ctx)
    call env%check(terminate_run)
    if (info == 1) then
-      call env%warning("local hessian: CG failed to converge", source)
+      call env%warning("Local Hessian CG failed to converge", source)
    else if (terminate_run) then
       return
    end if
@@ -143,15 +144,15 @@ subroutine odlr_operator(x, y, env, ctx)
    type(odlr_operator_data), pointer :: op_data
 
    if (present(ctx)) then
-      select type(ctx)
-         type is (odlr_operator_data)
+      select type (ctx)
+         type is(odlr_operator_data)
             op_data => ctx
          class default
-            call env%error("odlr_operator: invalid context", source)
+            call env%error("Invalid ODLR operator context", source)
             return
       end select
    else
-      call env%error("odlr_operator: missing context", source)
+      call env%error("Missing ODLR operator context", source)
       return
    end if
 
@@ -160,10 +161,10 @@ subroutine odlr_operator(x, y, env, ctx)
    call mctc_gemm(op_data%tmp, op_data%displdir(:, :op_data%ndispl_final), op_data%tmp2)
    call mctc_gemm(op_data%tmp2, op_data%displdir(:, :op_data%ndispl_final), op_data%f1, transb="t")
 
-   op_data%f1 = (op_data%f1+transpose(op_data%f1)) / 2.0_wp
+   op_data%f1 = (op_data%f1 + transpose(op_data%f1)) / 2.0_wp
    op_data%f2 = op_data%W2 * op_data%tmp
 
-   y = pack_sym(op_data%f1+op_data%f2, op_data%mask)
+   y = pack_sym(op_data%f1 + op_data%f2, op_data%mask)
 end subroutine odlr_operator
 
 !> Generic Conjugate Gradient Solver
@@ -213,9 +214,9 @@ subroutine cg(env, operator, ndim, rhs, x, info, x0, ctx)
       rs_old = rs_new
    end do
 
-    if (k == max_iter) then
-       info = 1
-    end if
+   if (k == max_iter) then
+      info = 1
+   end if
 end subroutine cg
 
 !> Corrects Hessian hnum using a symmetric, low-rank update
@@ -244,13 +245,13 @@ subroutine lr_loop(env, ndispl, g, hess_out, displdir, final_err)
    ! Column scaling (eqs. 17-18): scale down large-gradient columns
    allocate(gscale(ndispl), gscaled(N, ndispl), xscaled(N, ndispl))
    do j = 1, ndispl
-      gscale(j) = scale_eps / max(scale_eps, sqrt(sum(g(:, j)**2)))
+      gscale(j) = scale_eps / max(scale_eps, norm2(g(:, j)))
       gscaled(:, j) = g(:, j) * gscale(j)
       xscaled(:, j) = displdir(:, j) * gscale(j)
    end do
 
    allocate(hcorr(N, N), tmp(N, N))
-   gnorm = sqrt(sum(gscaled(:, :)**2))
+   gnorm = norm2(gscaled)
    rnorm_prev = huge(1.0_wp)
    final_err = huge(1.0_wp)
 
@@ -260,7 +261,7 @@ subroutine lr_loop(env, ndispl, g, hess_out, displdir, final_err)
       call mctc_gemm(hess_out, xscaled(:, :ndispl), tmp)
       resid = gscaled(:, :ndispl) - tmp
 
-      rnorm = sqrt(sum(resid(:, :)**2))
+      rnorm = norm2(resid)
       if (gnorm > 0.0_wp) then
          relres = rnorm / gnorm
       else
@@ -270,13 +271,13 @@ subroutine lr_loop(env, ndispl, g, hess_out, displdir, final_err)
 
       if (rnorm < thresh_LR) then
          exit loop_lr
-      else if (abs(rnorm-rnorm_prev) < thresh_LR) then
+      else if (abs(rnorm - rnorm_prev) < thresh_LR) then
          exit loop_lr
       end if
       rnorm_prev = rnorm
 
       call mctc_gemm(resid, xscaled(:, :ndispl), hcorr, transb="t")
-      hcorr = 0.5_wp * (hcorr+transpose(hcorr))
+      hcorr = 0.5_wp * (hcorr + transpose(hcorr))
       hess_out = hess_out + hcorr
 
    end do loop_lr
@@ -292,6 +293,7 @@ function unpack_sym(v, mask, n) result(H)
    real(wp), intent(in) :: v(:)
    logical, intent(in) :: mask(n, n)
    integer, intent(in) :: n
+
    real(wp) :: H(n, n)
    integer :: i
 
@@ -308,10 +310,11 @@ end function unpack_sym
 function pack_sym(m, mask) result(v)
    real(wp), intent(in) :: m(:, :)
    logical, intent(in) :: mask(:, :)
+
    real(wp), allocatable :: v(:)
 
    ! symmetrize, then pack
-   v = pack((m+transpose(m))*0.5_wp, mask)
+   v = pack((m + transpose(m))*0.5_wp, mask)
 end function pack_sym
 
 !> Setup a coordinate neighbor list from atom vdW radii.
@@ -339,13 +342,13 @@ subroutine get_vdw_neighbor_list(xyz, at, delta_r, nblist)
          if (i == j) then
             rij = 0.0_wp
          else
-            rij = sqrt(sum((xyz(:, i)-xyz(:, j))**2))
+            rij = norm2(xyz(:, i) - xyz(:, j))
          end if
          cutoff = rvdw(i) + rvdw(j) + delta_r
          if (rij <= cutoff) then
             do ic = 1, 3
                do jc = 1, 3
-                  call add_neighbor(nblist(3*(i-1)+ic), 3*(j-1)+jc)
+                  call add_neighbor(nblist(3*(i-1)+ic), 3*(j - 1) + jc)
                end do
             end do
          end if
@@ -357,6 +360,7 @@ end subroutine get_vdw_neighbor_list
 subroutine add_neighbor(list, val)
    type(adj_list), intent(inout) :: list
    integer, intent(in) :: val
+
    integer, allocatable :: tmp(:)
    integer :: sz
 
@@ -365,7 +369,7 @@ subroutine add_neighbor(list, val)
       list%neighbors(1) = val
    else
       sz = size(list%neighbors)
-      allocate(tmp(sz+1))
+      allocate(tmp(sz + 1))
       tmp(1:sz) = list%neighbors
       tmp(sz+1) = val
       call move_alloc(tmp, list%neighbors)
@@ -406,7 +410,8 @@ subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
    integer :: clk_a, clk_b, clk_c, clk_d, clk_e
    real(wp) :: prof_extract, prof_orth, prof_proj, prof_diag, prof_sign, prof_wall
    ! Thread-private work arrays for parallel region
-   real(wp), allocatable :: submat_local(:, :), projmat_local(:, :), vec_subset_local(:, :), tmp_local(:, :), work_local(:)
+   real(wp), allocatable :: submat_local(:, :), projmat_local(:, :)
+   real(wp), allocatable :: vec_subset_local(:, :), tmp_local(:, :), work_local(:)
    real(wp), allocatable :: eigvec_local(:, :)
    integer, allocatable :: iwork_local(:), isuppz_local(:)
 
@@ -435,13 +440,14 @@ subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
 
    ! Open parallel region once
    !$omp parallel default(none) &
-   !$omp shared(n, ndispl0, nblist, nbcounts, h0, displdir, max_nb, eye, locev_store, &
-   !$omp        ev, coverage, done, ndispl_final, eps, eps2, prof_rate, prof_sign) &
-   !$omp private(j, p, q, k, nnb, nb_idx, loceigs, locind, info, idx, n_curr, qn, m_eig, &
-   !$omp         norm_ev1, norm_ev2, v_norm, d_dot, u2, locev, &
-   !$omp         submat_local, projmat_local, vec_subset_local, tmp_local, work_local, &
-   !$omp         eigvec_local, iwork_local, isuppz_local, &
-   !$omp         prof_s0, prof_s1, clk_a, clk_b, clk_c, clk_d, clk_e) &
+   !$omp shared(n, ndispl0, nblist, nbcounts, h0, displdir, max_nb, eye) &
+   !$omp shared(locev_store, ev, coverage, done, ndispl_final) &
+   !$omp shared(eps, eps2, prof_rate, prof_sign) &
+   !$omp private(j, p, q, k, nnb, nb_idx, loceigs, locind, info, idx) &
+   !$omp private(n_curr, qn, m_eig, norm_ev1, norm_ev2, v_norm, d_dot, u2, locev) &
+   !$omp private(submat_local, projmat_local, vec_subset_local, tmp_local, work_local) &
+   !$omp private(eigvec_local, iwork_local, isuppz_local, prof_s0, prof_s1) &
+   !$omp private(clk_a, clk_b, clk_c, clk_d, clk_e) &
    !$omp reduction(+:prof_extract, prof_orth, prof_proj, prof_diag, prof_evals, prof_sum_nnb) &
    !$omp reduction(max:prof_max_nnb)
 
@@ -499,7 +505,8 @@ subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
                locev(1:nnb) = vec_subset_local(1:nnb, p)
                do q = 1, qn
                   locev(1:nnb) = locev(1:nnb) &
-                     & - dot_product(projmat_local(1:nnb, q), locev(1:nnb)) * projmat_local(1:nnb, q)
+                     & - dot_product(projmat_local(1:nnb, q), locev(1:nnb)) &
+                     & * projmat_local(1:nnb, q)
                end do
                u2 = dot_product(locev(1:nnb), locev(1:nnb))
                if (u2 < orth_tol) cycle
@@ -529,7 +536,7 @@ subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
             if (u2 < orth_tol) cycle
             locind = locind + 1
             tmp_local(1:nnb, locind) = locev(1:nnb) / sqrt(u2)
-            if (locind >= nnb-qn) exit
+            if (locind >= nnb - qn) exit
          end do
          call system_clock(clk_c)
 
@@ -538,23 +545,26 @@ subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
             cycle
          end if
 
-         call mctc_gemm(submat_local(:nnb, :nnb), tmp_local(:nnb, :locind), vec_subset_local(:nnb, :locind))
+         call mctc_gemm(submat_local(:nnb, :nnb), tmp_local(:nnb, :locind), &
+            & vec_subset_local(:nnb, :locind))
          call mctc_gemm(tmp_local(:nnb, :locind), vec_subset_local(:nnb, :locind), &
             & projmat_local(:locind, :locind), transa="t")
 
          ! Symmetrize
-         projmat_local(:locind, :locind) = 0.5_wp * (projmat_local(:locind, :locind)+transpose(projmat_local(:locind, :locind)))
+         projmat_local(:locind, :locind) = 0.5_wp * (projmat_local(:locind, :locind) + &
+            & transpose(projmat_local(:locind, :locind)))
          call system_clock(clk_d)
 
          ! 3. Largest-eigenpair diagonalization
-         call lapack_syevr('V', 'I', 'U', locind, projmat_local, max_nb, 0.0_wp, 0.0_wp, locind, locind, &
-            & 0.0_wp, m_eig, loceigs, eigvec_local, max_nb, isuppz_local, work_local, size(work_local), &
+         call lapack_syevr("V", "I", "U", locind, projmat_local, max_nb, &
+            & 0.0_wp, 0.0_wp, locind, locind, 0.0_wp, m_eig, loceigs, eigvec_local, &
+            & max_nb, isuppz_local, work_local, size(work_local), &
             & iwork_local, size(iwork_local), info)
          call system_clock(clk_e)
-         prof_extract = prof_extract + real(clk_b-clk_a, wp) / real(prof_rate, wp)
-         prof_orth = prof_orth + real(clk_c-clk_b, wp) / real(prof_rate, wp)
-         prof_proj = prof_proj + real(clk_d-clk_c, wp) / real(prof_rate, wp)
-         prof_diag = prof_diag + real(clk_e-clk_d, wp) / real(prof_rate, wp)
+         prof_extract = prof_extract + real(clk_b - clk_a, wp) / real(prof_rate, wp)
+         prof_orth = prof_orth + real(clk_c - clk_b, wp) / real(prof_rate, wp)
+         prof_proj = prof_proj + real(clk_d - clk_c, wp) / real(prof_rate, wp)
+         prof_diag = prof_diag + real(clk_e - clk_d, wp) / real(prof_rate, wp)
 
          ! Store the lifted eigenvector for the serial phase.
          locev_store(1:nnb, j) = 0.0_wp
@@ -582,22 +592,22 @@ subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
          norm_ev2 = 0.0_wp
          do p = 1, nnb
             idx = nb_idx(p)
-            norm_ev1 = norm_ev1 + ((coverage(idx)*ev(idx)+locev(p))/(coverage(idx)+1.0_wp))**2
-            norm_ev2 = norm_ev2 + ((coverage(idx)*ev(idx)-locev(p))/(coverage(idx)+1.0_wp))**2
+            norm_ev1 = norm_ev1 + ((coverage(idx)*ev(idx) + locev(p))/(coverage(idx) + 1.0_wp))**2
+            norm_ev2 = norm_ev2 + ((coverage(idx)*ev(idx) - locev(p))/(coverage(idx) + 1.0_wp))**2
          end do
          norm_ev1 = sqrt(norm_ev1)
          norm_ev2 = sqrt(norm_ev2)
 
          ! Apply update
-         if (norm_ev1 > norm_ev2+eps) then
+         if (norm_ev1 > norm_ev2 + eps) then
             do p = 1, nnb
                idx = nb_idx(p)
-               ev(idx) = (coverage(idx)*ev(idx)+locev(p)) / (coverage(idx)+1.0_wp)
+               ev(idx) = (coverage(idx)*ev(idx) + locev(p)) / (coverage(idx) + 1.0_wp)
             end do
-         else if (norm_ev1 < norm_ev2-eps) then
+         else if (norm_ev1 < norm_ev2 - eps) then
             do p = 1, nnb
                idx = nb_idx(p)
-               ev(idx) = (coverage(idx)*ev(idx)-locev(p)) / (coverage(idx)+1.0_wp)
+               ev(idx) = (coverage(idx)*ev(idx) - locev(p)) / (coverage(idx) + 1.0_wp)
             end do
          else
             ! Deterministic sign fix based on max element
@@ -605,12 +615,12 @@ subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
             if (locev(locind) > 0.0_wp) then
                do p = 1, nnb
                   idx = nb_idx(p)
-                  ev(idx) = (coverage(idx)*ev(idx)+locev(p)) / (coverage(idx)+1.0_wp)
+                  ev(idx) = (coverage(idx)*ev(idx) + locev(p)) / (coverage(idx) + 1.0_wp)
                end do
             else
                do p = 1, nnb
                   idx = nb_idx(p)
-                  ev(idx) = (coverage(idx)*ev(idx)-locev(p)) / (coverage(idx)+1.0_wp)
+                  ev(idx) = (coverage(idx)*ev(idx) - locev(p)) / (coverage(idx) + 1.0_wp)
                end do
             end if
          end if
@@ -638,7 +648,7 @@ subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
          ndispl_final = n_curr + 1
       end if
       call system_clock(prof_s1)
-      prof_sign = prof_sign + real(prof_s1-prof_s0, wp) / real(prof_rate, wp)
+      prof_sign = prof_sign + real(prof_s1 - prof_s0, wp) / real(prof_rate, wp)
       !$omp end single
    end do
 
@@ -648,12 +658,14 @@ subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
 
    deallocate(eye, locev_store)
    call system_clock(prof_t1)
-   prof_wall = real(prof_t1-prof_t0, wp) / real(prof_rate, wp)
+   prof_wall = real(prof_t1 - prof_t0, wp) / real(prof_rate, wp)
    if (present(unit)) then
       if (unit > 0) then
-         write(unit, '("PROF gen_displdir: wall=",f10.3," s, evals=",i0,", avg_nnb=",f8.2,", max_nnb=",i0)') &
-            & prof_wall, prof_evals, real(prof_sum_nnb, wp) / real(max(1, prof_evals), wp), prof_max_nnb
-         write(unit, '("PROF gen_displdir: extract=",f10.3," s, orth=",f10.3," s, proj=",f10.3," s, diag=",f10.3," s, sign=",f10.3," s")') &
+         write(unit, '("PROF gen_displdir: wall=",f10.3," s, evals=",i0,'//&
+            & '", avg_nnb=",f8.2,", max_nnb=",i0)') prof_wall, prof_evals, &
+            & real(prof_sum_nnb, wp) / real(max(1, prof_evals), wp), prof_max_nnb
+         write(unit, '("PROF gen_displdir: extract=",f10.3," s, orth=",f10.3,'//&
+            & '" s, proj=",f10.3," s, diag=",f10.3," s, sign=",f10.3," s")') &
             & prof_extract, prof_orth, prof_proj, prof_diag, prof_sign
          flush(unit)
       end if
@@ -664,8 +676,7 @@ end subroutine gen_displdir
 !> projection (trproj, unit-mass geometric center) and mass weighting as the
 !> vibrational frequency path in src/hessian.F90. Returns Cartesian
 !> displacement directions and frequencies in cm^-1 (negative = imaginary).
-!> Linear molecules skip projection (matching src/hessian.F90); caller passes
-!> the linear flag so the 3x3 inertia diag is not repeated here.
+!> Linear molecules skip projection (matching src/hessian.F90)
 subroutine find_projected_imag_modes(env, mol, hess, linear, max_modes, modes, freqs, nmodes)
    type(TEnvironment), intent(inout) :: env
    type(TMolecule), intent(in) :: mol
@@ -676,7 +687,6 @@ subroutine find_projected_imag_modes(env, mol, hess, linear, max_modes, modes, f
    real(wp), intent(out) :: freqs(:)
    integer, intent(out) :: nmodes
 
-   character(len=*), parameter :: source = "find_projected_imag_modes"
    integer :: N, nat, i, j, k, ia, ic, ii, m_eig, info, ndiag
    real(wp), allocatable :: hpack(:), Hmw(:, :), inv_sqrt_m(:), v(:), &
       & eigvec(:, :), work(:), dummy_mode(:, :)
@@ -693,13 +703,13 @@ subroutine find_projected_imag_modes(env, mol, hess, linear, max_modes, modes, f
    allocate(inv_sqrt_m(N), v(N))
    do ia = 1, nat
       do ic = 1, 3
-         ii = 3 * (ia-1) + ic
+         ii = 3 * (ia - 1) + ic
          inv_sqrt_m(ii) = 1.0_wp / sqrt(mol%atmass(ia))
       end do
    end do
 
    ! pack upper-by-column (j<=i), same layout as src/hessian.F90 trproj input
-   allocate(hpack(N*(N+1)/2))
+   allocate(hpack(N*(N + 1)/2))
    k = 0
    do i = 1, N
       do j = 1, i
@@ -737,10 +747,10 @@ subroutine find_projected_imag_modes(env, mol, hess, linear, max_modes, modes, f
    ndiag = min(max_modes, N)
    allocate(eigvec(N, ndiag), isuppz(2*ndiag))
    allocate(work(max(1, 200*N)), iwork(max(1, 50*N)))
-   call lapack_syevr('V', 'I', 'U', N, Hmw, N, 0.0_wp, 0.0_wp, 1, ndiag, 0.0_wp, &
+   call lapack_syevr("V", "I", "U", N, Hmw, N, 0.0_wp, 0.0_wp, 1, ndiag, 0.0_wp, &
       & m_eig, eigval, eigvec, N, isuppz, work, size(work), iwork, size(iwork), info)
    if (info /= 0) then
-      call env%warning("find_projected_imag_modes: dsyevr failed", source)
+      call env%warning("dsyevr failed", source)
       nmodes = 0
       return
    end if
