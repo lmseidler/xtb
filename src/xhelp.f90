@@ -89,12 +89,12 @@ write(iunit,'(3x,a)') &
    "  DOI: 10.1021/acs.jctc.5c01354",&
    "",&
    "with help from (in alphabetical order)",&
-   "P. Atkinson, C. Bannwarth, F. Bohle, G. Brandenburg, E. Caldeweyher", &
-   "M. Checinski, S. Dohm, S. Ehlert, S. Ehrlich, I. Gerasimov, C. Hölzer", &
-   "A. Katbashev, J. Kohn, J. Koopman, C. Lavigne, S. Lehtola, F. März, M. Müller,", &
-   "F. Musil, H. Neugebauer, J. Pisarek, C. Plett, P. Pracht, F. Pultar,", &
-   "J. Seibert, L. M. Seidler, P. Shushkov, S. Spicher, M. Stahn, M. Steiner, T. Strunk,", &
-   "J. Stückrath, T. Rose, and J. Unsleber", &
+   "P. Atkinson, C. Bannwarth, F. Bohle, G. Brandenburg, E. Caldeweyher,", &
+   "M. Checinski, S. Dohm, S. Ehlert, S. Ehrlich, M. Friede, T. Froitzheim,", &
+   "I. Gerasimov, C. Hölzer, A. Katbashev, J. Kohn, J. Koopman, C. Lavigne,", &
+   "S. Lehtola, F. März, M. Müller, F. Musil, H. Neugebauer, J. Pisarek,", &
+   "C. Plett, P. Pracht, F. Pultar, J. Seibert, L. M. Seidler, P. Shushkov, S. Spicher,", &
+   "M. Stahn, M. Steiner, T. Strunk, J. Stückrath, T. Rose, and J. Unsleber", &
    ""
 end subroutine citation
 
@@ -122,6 +122,7 @@ subroutine help(iunit)
    "",&
    "-u, --uhf INT",&
    "    specify number of unpaired electrons as INT, overrides .UHF file and xcontrol option",&
+   "    (default: 0 (singlet) for even electron number, 1 (doublet) for odd electron number)",&
    "",&
    "--gfn INT",&
    "    specify parametrisation of GFN-xTB (default = 2)",&
@@ -146,6 +147,10 @@ subroutine help(iunit)
    "    'outer' can be 'gfn2', 'gfn1', or 'gfnff'.", &
    "    The inner region is given as a comma separated indices directly in the commandline", &
    "    or in a file with each index on a separate line.", &
+   "",&
+   "--efield REAL,REAL,REAL",&
+   "    static electric field in Cartesian coordinates, overrides '.EFIELD' file,",&
+   "    works only via tblite for the xTB Hamiltonians, or with GFN-FF and PTB.",&
    "",&
    "--etemp REAL",&
    "    electronic temperature (default = 300K)",&
@@ -181,6 +186,18 @@ subroutine help(iunit)
    "    n-hexane (only GFN2-xTB), THF and toluene.",&
    "    The solvent input is not case-sensitive.", &
    "    The Gsolv reference state can be chosen as reference, bar1M, or gsolv (default).",&
+   "",&
+   "--gbe SOLVENT/EPSILON",&
+   "    generalized Born for finite epsilon (GBe) solvation model (tblite required),", &
+   "    includes only the electrostatic solvation contribution (no SASA model),", &
+   "    available solvents are all solvents that are available for alpb.", &
+   "    Additionally, the dielectric constant can be set manually.", &
+   "",&
+   "--gb SOLVENT/EPSILON",&
+   "    generalized Born (GB) solvation model (tblite required),", &
+   "    includes only the electrostatic solvation contribution (no SASA model),", &
+   "    available solvents are all solvents that are available for alpb.", &
+   "    Additionally, the dielectric constant can be set manually.", &
    "",&
    "--cosmo SOLVENT/EPSILON",&
    "    domain decomposition conductor-like screening model (ddCOSMO),",&

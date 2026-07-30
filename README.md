@@ -11,6 +11,12 @@ This is the official repository of the `xtb` program package developed by the Gr
 <img src="./assets/logo/xtb.svg" alt="Extended Tight Binding" width="220">
 </div>
 
+## Table of Contents
+- [Installation](#installation)
+- [Documentation](#documentation)
+- [Contributing](#contributing)
+- [Citations](#citations)
+- [Licence](#license)
 
 ## Installation
 
@@ -150,6 +156,8 @@ features reality:
 - S. Dohm ([@thch-dohm](https://github.com/thch-dohm))
 - S. Ehlert ([@awvwgk](https://github.com/awvwgk))
 - S. Ehrlich
+- M. Friede ([@marvinfriede](https://github.com/marvinfriede))
+- T. Froitzheim ([@thfroitzheim](https://github.com/thfroitzheim))
 - I. Gerasimov ([@foxtran](https://github.com/foxtran))
 - [S. Grimme](https://www.chemie.uni-bonn.de/pctc/mulliken-center/grimme/) ([@stefangrimme](https://github.com/stefangrimme))
 - C. Hölzer ([@hoelzerC](https://github.com/hoelzerc))

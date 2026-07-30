@@ -219,7 +219,7 @@ $gbsa
 
 *grid*='level'::
     changes the grid used for the surface accessable surface area
-    (normal, tight, vtight, extreme are available).
+    (normal, tight, vtight/verytight, extreme are available).
 
 $gfn
 ~~~~

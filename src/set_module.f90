@@ -2236,7 +2236,7 @@ subroutine set_gbsa(env,key,val)
             endif
          case('normal');    set%solvInput%nAng = p_angsa_normal
          case('tight');     set%solvInput%nAng = p_angsa_tight
-         case('verytight'); set%solvInput%nAng = p_angsa_verytight
+         case('verytight', 'vtight'); set%solvInput%nAng = p_angsa_verytight
          case('extreme');   set%solvInput%nAng = p_angsa_extreme
          endselect
       endif
