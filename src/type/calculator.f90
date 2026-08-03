@@ -469,7 +469,12 @@ subroutine hessian_odlr(self, env, mol0, chk0, step, hess, final_err, dipgrad, p
 
    ! populate displdir
    ndispl0 = Ntr + 1
-   call gen_displdir(N, ndispl0, h0, max_nb, neighborlist, nbcounts, eps2, eps, displdir, ndispl_final)
+   call gen_displdir(N, ndispl0, h0, max_nb, neighborlist, nbcounts, eps2, eps, &
+      & displdir, ndispl_final, info)
+   if (info /= 0) then
+      call env%error("DSYEVX failed while generating displacement directions", source)
+      return
+   end if
 
    ! ========== GRADIENT DERIVATIVES ==========
    call get_gradient_derivs(self, env, step, ndispl0, ndispl_final, displdir, mol0, chk0, g0, .false., g, &

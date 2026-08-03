@@ -21,7 +21,7 @@ module xtb_o1numhess
    use xtb_mctc_accuracy, only : wp
    use xtb_mctc_convert, only : autoaa, autorcm
    use xtb_mctc_blas, only : mctc_gemm, mctc_dot
-   use xtb_mctc_lapack, only : lapack_syevr
+   use xtb_mctc_lapack, only : lapack_syevx
    use xtb_type_environment, only : TEnvironment
    use xtb_type_molecule, only : TMolecule
    use xtb_freq_project, only : trproj
@@ -378,7 +378,7 @@ end subroutine add_neighbor
 
 !> Calculate displacement vectors for the gradient derivatives
 subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
-                        eps, eps2, displdir, ndispl_final)
+      & eps, eps2, displdir, ndispl_final, ierr)
    integer, intent(in) :: n, ndispl0, max_nb
    !> Initial guess Hessian
    real(wp), intent(in) :: h0(n, n)
@@ -392,6 +392,8 @@ subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
    real(wp), intent(inout) :: displdir(n, n)
    !> Final number of displacements
    integer, intent(out) :: ndispl_final
+   !> LAPACK error code
+   integer, intent(out) :: ierr
    ! Local variables
    integer :: i, j, k, p, q, nnb, info, n_curr, idx, locind, qn, m_eig
    integer :: nb_idx(max_nb)
@@ -406,7 +408,7 @@ subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
    real(wp), allocatable :: submat_local(:, :), projmat_local(:, :)
    real(wp), allocatable :: vec_subset_local(:, :), tmp_local(:, :), work_local(:)
    real(wp), allocatable :: eigvec_local(:, :)
-   integer, allocatable :: iwork_local(:), isuppz_local(:)
+   integer, allocatable :: iwork_local(:), ifail_local(:)
 
    ! Initialize identity matrix
    allocate(eye(max_nb, max_nb))
@@ -420,25 +422,26 @@ subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
    allocate(locev_store(max_nb, n))
 
    done = .false.
+   ierr = 0
 
    ! Open parallel region once
    !$omp parallel default(none) &
    !$omp shared(n, ndispl0, nblist, nbcounts, h0, displdir, max_nb, eye) &
-   !$omp shared(locev_store, ev, coverage, done, ndispl_final) &
+   !$omp shared(locev_store, ev, coverage, done, ndispl_final, ierr) &
    !$omp shared(eps, eps2) &
    !$omp private(j, p, q, k, nnb, nb_idx, loceigs, locind, info, idx) &
    !$omp private(n_curr, qn, m_eig, norm_ev1, norm_ev2, v_norm, d_dot, u2, locev) &
    !$omp private(submat_local, projmat_local, vec_subset_local, tmp_local, work_local) &
-   !$omp private(eigvec_local, iwork_local, isuppz_local)
+   !$omp private(eigvec_local, iwork_local, ifail_local)
 
    allocate(submat_local(max_nb, max_nb))
    allocate(projmat_local(max_nb, n))
    allocate(vec_subset_local(max_nb, n))
    allocate(tmp_local(max_nb, max_nb))
    allocate(work_local(max(1, 200*max_nb)))
-   allocate(iwork_local(max(1, 50*max_nb)))
-   allocate(isuppz_local(max(1, 2*max_nb)))
-   allocate(eigvec_local(max_nb, max_nb))
+   allocate(iwork_local(max(1, 5*max_nb)))
+   allocate(ifail_local(max(1, max_nb)))
+   allocate(eigvec_local(max_nb, 1))
 
    ! Outer loop: generate new directions
    do n_curr = ndispl0, n - 1
@@ -525,10 +528,21 @@ subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
          projmat_local(:locind, :locind) = 0.5_wp * (projmat_local(:locind, :locind) + &
             & transpose(projmat_local(:locind, :locind)))
          ! 3. Largest-eigenpair diagonalization
-         call lapack_syevr("V", "I", "U", locind, projmat_local, max_nb, &
+         call lapack_syevx("V", "I", "U", locind, projmat_local, max_nb, &
             & 0.0_wp, 0.0_wp, locind, locind, 0.0_wp, m_eig, loceigs, eigvec_local, &
-            & max_nb, isuppz_local, work_local, size(work_local), &
-            & iwork_local, size(iwork_local), info)
+            & max_nb, work_local, size(work_local), iwork_local, ifail_local, info)
+         if (info /= 0 .or. m_eig /= 1) then
+            !$omp critical
+            if (ierr == 0) then
+               if (info /= 0) then
+                  ierr = info
+               else
+                  ierr = -1
+               end if
+            end if
+            !$omp end critical
+            cycle
+         end if
          ! Store the lifted eigenvector for the serial phase.
          locev_store(1:nnb, j) = 0.0_wp
          do p = 1, locind
@@ -536,6 +550,8 @@ subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
          end do
       end do
       !$omp end do
+
+      if (ierr /= 0) exit
 
       ! Serial phase: sign fixing and accumulation
       !$omp single
@@ -613,7 +629,7 @@ subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
    end do
 
    deallocate(submat_local, projmat_local, vec_subset_local, tmp_local, work_local, &
-      & iwork_local, isuppz_local, eigvec_local)
+      & iwork_local, ifail_local, eigvec_local)
    !$omp end parallel
 
    deallocate(eye, locev_store)
@@ -636,9 +652,8 @@ subroutine find_projected_imag_modes(env, mol, hess, linear, max_modes, modes, f
 
    integer :: N, nat, i, j, k, ia, ic, ii, m_eig, info, ndiag
    real(wp), allocatable :: hpack(:), Hmw(:, :), inv_sqrt_m(:), v(:), &
-      & eigvec(:, :), work(:), dummy_mode(:, :)
-   real(wp) :: eigval(max_modes)
-   integer, allocatable :: isuppz(:), iwork(:)
+      & eigval(:), eigvec(:, :), work(:), dummy_mode(:, :)
+   integer, allocatable :: iwork(:), ifail(:)
    real(wp) :: freq
    real(wp), parameter :: neg_sig_min_rcm = 5.0_wp
 
@@ -692,12 +707,12 @@ subroutine find_projected_imag_modes(env, mol, hess, linear, max_modes, modes, f
 
    ! lowest eigenpairs only
    ndiag = min(max_modes, N)
-   allocate(eigvec(N, ndiag), isuppz(2*ndiag))
-   allocate(work(max(1, 200*N)), iwork(max(1, 50*N)))
-   call lapack_syevr("V", "I", "U", N, Hmw, N, 0.0_wp, 0.0_wp, 1, ndiag, 0.0_wp, &
-      & m_eig, eigval, eigvec, N, isuppz, work, size(work), iwork, size(iwork), info)
+   allocate(eigval(N), eigvec(N, ndiag), ifail(N))
+   allocate(work(max(1, 200*N)), iwork(max(1, 5*N)))
+   call lapack_syevx("V", "I", "U", N, Hmw, N, 0.0_wp, 0.0_wp, 1, ndiag, 0.0_wp, &
+      & m_eig, eigval, eigvec, N, work, size(work), iwork, ifail, info)
    if (info /= 0) then
-      call env%warning("dsyevr failed", source)
+      call env%warning("dsyevx failed", source)
       nmodes = 0
       return
    end if
