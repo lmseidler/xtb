@@ -438,7 +438,7 @@ subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
    allocate(work_local(max(1, 200*max_nb)))
    allocate(iwork_local(max(1, 50*max_nb)))
    allocate(isuppz_local(max(1, 2*max_nb)))
-   allocate(eigvec_local(max_nb, 1))
+   allocate(eigvec_local(max_nb, max_nb))
 
    ! Outer loop: generate new directions
    do n_curr = ndispl0, n - 1
