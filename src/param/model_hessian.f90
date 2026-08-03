@@ -45,26 +45,30 @@ module xtb_param_model_hessian
       0.3949_wp, 0.2800_wp, 0.2800_wp, &
       0.3949_wp, 0.2800_wp, 0.2800_wp], [3, 3])
 
+   real(wp), parameter :: d2_dav(3, 3) = reshape([ &
+      0.0000_wp, 0.0000_wp, 0.0000_wp, &
+      0.0000_wp, 0.0000_wp, 0.0000_wp, &
+      0.0000_wp, 0.0000_wp, 0.0000_wp], [3, 3])
+
+   real(wp), parameter :: lindh_rav(3, 3) = reshape([ &
+      1.3500_wp, 2.1000_wp, 2.5300_wp, &
+      2.1000_wp, 2.8700_wp, 3.8000_wp, &
+      2.5300_wp, 3.8000_wp, 4.5000_wp], [3, 3])
+   real(wp), parameter :: lindh_aav(3, 3) = reshape([ &
+      1.0000_wp, 0.3949_wp, 0.3949_wp, &
+      0.3949_wp, 0.2800_wp, 0.1200_wp, &
+      0.3949_wp, 0.1200_wp, 0.0600_wp], [3, 3])
+   real(wp), parameter :: lindh_dav(3, 3) = reshape([ &
+      0.0000_wp, 3.6000_wp, 3.6000_wp, &
+      3.6000_wp, 5.3000_wp, 5.3000_wp, &
+      3.6000_wp, 5.3000_wp, 5.3000_wp], [3, 3])
+
    type(TLindhParameters), parameter :: lindh_d2_parameters = TLindhParameters( &
-      rav=legacy_rav, aav=legacy_aav, dav=reshape([ &
-         0.0000_wp, 0.0000_wp, 0.0000_wp, &
-         0.0000_wp, 0.0000_wp, 0.0000_wp, &
-         0.0000_wp, 0.0000_wp, 0.0000_wp], [3, 3]), &
+      rav=legacy_rav, aav=legacy_aav, dav=d2_dav, &
       outofplane_dispersion_scale=1.0_wp)
 
    type(TLindhParameters), parameter :: lindh_parameters = TLindhParameters( &
-      rav=reshape([ &
-         1.3500_wp, 2.1000_wp, 2.5300_wp, &
-         2.1000_wp, 2.8700_wp, 3.8000_wp, &
-         2.5300_wp, 3.8000_wp, 4.5000_wp], [3, 3]), &
-      aav=reshape([ &
-         1.0000_wp, 0.3949_wp, 0.3949_wp, &
-         0.3949_wp, 0.2800_wp, 0.1200_wp, &
-         0.3949_wp, 0.1200_wp, 0.0600_wp], [3, 3]), &
-      dav=reshape([ &
-         0.0000_wp, 3.6000_wp, 3.6000_wp, &
-         3.6000_wp, 5.3000_wp, 5.3000_wp, &
-         3.6000_wp, 5.3000_wp, 5.3000_wp], [3, 3]), &
+      rav=lindh_rav, aav=lindh_aav, dav=lindh_dav, &
       outofplane_dispersion_scale=0.0_wp)
 
    real(wp), parameter :: d2_damping = 20.0_wp
