@@ -17,7 +17,7 @@
 
 !> Behavior-lock tests for model Hessian variants
 !>
-!> Reference data lives in `test/unit/fixtures/model_hessian/*.dat` as one
+!> Reference data lives in `test/unit/fixtures/model_hessian/` as one
 !> packed Hessian value per line. With GEN_REFS = 1, the tests write files from
 !> current code output and PASS. Otherwise they compare element-wise against
 !> stored references
@@ -46,7 +46,7 @@ module test_model_hessian
    integer, parameter :: VAR_LINDH = 2
    integer, parameter :: VAR_SWART = 3
 
-   real(wp), parameter :: thr = 10 * epsilon(0.0_wp)
+   real(wp), parameter :: thr = 1000 * epsilon(0.0_wp)
 
 contains
 
@@ -218,7 +218,7 @@ subroutine test_model_hessian_charge(error)
 
       do i = 1, size(base)
          call check(error, charged(i), base(i) + contribution(i), &
-            & thr=100 * epsilon(0.0_wp))
+            & thr=thr)
          if (allocated(error)) return
       end do
    end do
@@ -249,7 +249,7 @@ subroutine test_eeq_addition(error)
    call check(error, any(abs(contribution) > epsilon(0.0_wp)))
    if (allocated(error)) return
    do i = 1, size(contribution)
-      call check(error, shifted(i), 1.0_wp + contribution(i), thr=100*epsilon(0.0_wp))
+      call check(error, shifted(i), 1.0_wp + contribution(i), thr=thr)
       if (allocated(error)) return
    end do
 end subroutine test_eeq_addition

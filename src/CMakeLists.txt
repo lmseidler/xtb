@@ -97,7 +97,6 @@ list(APPEND srcs
   "${dir}/intmodes.f90"
   "${dir}/intpack.f90"
   "${dir}/lidep.f90"
-  "${dir}/lindh.f90"
   "${dir}/lin.f90"
   "${dir}/lin_mod.f90"
   "${dir}/local.f90"
