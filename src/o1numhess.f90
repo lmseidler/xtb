@@ -63,6 +63,8 @@ module xtb_o1numhess
 
    character(len=*), parameter :: source = "xtb_o1numhess"
 
+   real(wp), parameter :: sqrt2 = sqrt(2.0_wp)
+
 contains
 
 !> Main routine to recover local Hessian
@@ -87,10 +89,13 @@ subroutine gen_local_hessian(env, ndispl_final, distmat, displdir, g, dmax, hess
    ! Local work arrays
    type(odlr_operator_data) :: ctx
    real(wp), allocatable :: rhs(:, :), rhsv(:), sol(:)
-   integer :: i, ndim, N, info
+   integer :: i, ndim, N, info, niter
+   real(wp) :: resid
+   character(len=128) :: warn
    logical :: terminate_run
 
    N = size(distmat, 1)
+   hess_out = 0.0_wp
 
    ! Prepare cache
    ctx%N = N
@@ -121,12 +126,15 @@ subroutine gen_local_hessian(env, ndispl_final, distmat, displdir, g, dmax, hess
    allocate(sol(ndim))
    sol = 0.0_wp
    info = 0
-   call cg(env, odlr_operator, ndim, rhsv, sol, info, ctx=ctx)
+   call cg(env, odlr_operator, ndim, rhsv, sol, info, ctx=ctx, &
+      & niter=niter, resid=resid)
    call env%check(terminate_run)
+   if (terminate_run) return
    if (info == 1) then
-      call env%warning("Local Hessian CG failed to converge", source)
-   else if (terminate_run) then
-      return
+      write(warn, '(a, i0, a, es10.3)') &
+         & "Local Hessian CG failed to converge in ", niter, &
+         & " iterations, relative residual ", resid
+      call env%warning(trim(warn), source)
    end if
 
    ! Recover Hessian from solution
@@ -168,7 +176,7 @@ subroutine odlr_operator(x, y, env, ctx)
 end subroutine odlr_operator
 
 !> Generic Conjugate Gradient Solver
-subroutine cg(env, operator, ndim, rhs, x, info, x0, ctx)
+subroutine cg(env, operator, ndim, rhs, x, info, x0, ctx, niter, resid)
    type(TEnvironment), intent(inout) :: env
    procedure(matvec_operator) :: operator
    integer, intent(in) :: ndim
@@ -177,15 +185,21 @@ subroutine cg(env, operator, ndim, rhs, x, info, x0, ctx)
    integer, intent(out) :: info
    real(wp), intent(in), optional :: x0(:)
    class(*), optional, target, intent(inout) :: ctx
+   !> Number of iterations performed
+   integer, intent(out) :: niter
+   !> Final relative residual norm ||r|| / ||b||
+   real(wp), intent(out) :: resid
 
    integer, parameter :: max_iter = 1000
-   real(wp), parameter :: tol = 1.0e-14_wp
+   real(wp), parameter :: tol2 = epsilon(0.0_wp)
    real(wp), allocatable :: r(:), p(:), Ap(:)
-   real(wp) :: alpha, beta, rs_old, rs_new
+   real(wp) :: alpha, beta, rs_old, rs_new, rs_ref, pAp
    integer :: k
    logical :: terminate_run
 
    info = 0
+   niter = 0
+   resid = 0.0_wp
    allocate(r(ndim), p(ndim), Ap(ndim))
 
    if (present(x0)) then
@@ -197,26 +211,47 @@ subroutine cg(env, operator, ndim, rhs, x, info, x0, ctx)
    p = r
    rs_old = mctc_dot(r, r)
 
+   rs_ref = mctc_dot(rhs, rhs)
+   if (rs_ref <= 0.0_wp) rs_ref = 1.0_wp   ! zero rhs, solution is x = 0
+
+   rs_new = rs_old
+   if (rs_old < tol2 * rs_ref) then
+      resid = sqrt(rs_old / rs_ref)
+      return
+   end if
+
    do k = 1, max_iter
       call operator(p, Ap, env, ctx)
       call env%check(terminate_run)
       if (terminate_run) return
 
-      alpha = rs_old / mctc_dot(p, Ap)
+      ! operator is SPSD, so pAp <= 0 or non-finite means CG broke down
+      pAp = mctc_dot(p, Ap)
+      if (.not. (pAp > 0.0_wp) .or. pAp > huge(pAp)) then
+         call env%error("Conjugate gradient breakdown: operator is not "//&
+            & "positive definite", source)
+         return
+      end if
+
+      alpha = rs_old / pAp
       x = x + alpha * p
       r = r - alpha * Ap
       rs_new = mctc_dot(r, r)
 
-      if (rs_new < tol) exit
+      if (rs_new < tol2 * rs_ref) exit
 
       beta = rs_new / rs_old
       p = r + beta * p
       rs_old = rs_new
    end do
 
-   if (k == max_iter) then
+   if (k > max_iter) then
       info = 1
+      k = max_iter
    end if
+
+   niter = k
+   resid = sqrt(rs_new / rs_ref)
 end subroutine cg
 
 !> Corrects Hessian hnum using a symmetric, low-rank update
@@ -282,13 +317,13 @@ subroutine lr_loop(env, ndispl, g, hess_out, displdir, final_err)
 
    end do loop_lr
 
-   if (it == maxiter_LR) then
+   if (it > maxiter_LR) then
       call env%warning("LR loop failed to converge", source)
    end if
 
 end subroutine lr_loop
 
-!> Helper to unpack vector to Symmetric Matrix
+!> Helper to unpack vector to Symmetric Matrix (inverse of pack_sym)
 function unpack_sym(v, mask, n) result(H)
    real(wp), intent(in) :: v(:)
    logical, intent(in) :: mask(n, n)
@@ -300,21 +335,33 @@ function unpack_sym(v, mask, n) result(H)
    H = 0.0_wp
    H = unpack(v, mask, field=0.0_wp)
 
+   ! Undo the off-diagonal scaling introduced by pack_sym
+   H = H / sqrt2
+   do i = 1, n
+      H(i, i) = H(i, i) * sqrt2
+   end do
+
    ! Symmetrize
    do i = 2, n
       H(i, 1:i-1) = H(1:i-1, i)
    end do
 end function unpack_sym
 
-!> Helper to pack symmetric matrix
+!> Helper to pack symmetric matrix (isometric)
 function pack_sym(m, mask) result(v)
    real(wp), intent(in) :: m(:, :)
    logical, intent(in) :: mask(:, :)
 
    real(wp), allocatable :: v(:)
+   real(wp), allocatable :: ms(:, :)
+   integer :: i
 
-   ! symmetrize, then pack
-   v = pack((m + transpose(m))*0.5_wp, mask)
+   ! symmetrize, scale off-diagonals, then pack
+   ms = sqrt2 * (m + transpose(m))*0.5_wp
+   do i = 1, size(m, 1)
+      ms(i, i) = ms(i, i) / sqrt2
+   end do
+   v = pack(ms, mask)
 end function pack_sym
 
 !> Setup a coordinate neighbor list from atom vdW radii.

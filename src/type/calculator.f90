@@ -484,6 +484,10 @@ subroutine hessian_odlr(self, env, mol0, chk0, step, hess, final_err, dipgrad, p
    ! construct hessian from local hessian and odlr correction
    ! compute local hessian
    call gen_local_hessian(env, ndispl_final, distmat, displdir, g, dmax, hess)
+   call env%check(terminate_run)
+   if (terminate_run) then
+      return
+   end if
 
    ! compute low rank correction
    call lr_loop(env, ndispl_final, g, hess, displdir, final_err)
@@ -542,6 +546,8 @@ subroutine hessian_odlr(self, env, mol0, chk0, step, hess, final_err, dipgrad, p
          call env%check(terminate_run)
          if (terminate_run) exit
          call gen_local_hessian(env, ndispl_final, distmat, displdir, g, dmax, hess)
+         call env%check(terminate_run)
+         if (terminate_run) exit
          call lr_loop(env, ndispl_final, g, hess, displdir, final_err)
 
       end do
@@ -559,6 +565,11 @@ subroutine hessian_odlr(self, env, mol0, chk0, step, hess, final_err, dipgrad, p
       deallocate (work)
       allocate (work(lwork))
       call dsyev('V', 'U', N, eigvec, N, eigval, work, lwork, info)
+      if (info /= 0) then
+         call env%error("hessian_odlr: DSYEV failed while searching for "//&
+            & "imaginary modes", source)
+         return
+      end if
 
       nimg = count(eigval < -imagthr)
       if (ndispl_final + nimg > N) nimg = N - ndispl_final
@@ -569,7 +580,11 @@ subroutine hessian_odlr(self, env, mol0, chk0, step, hess, final_err, dipgrad, p
          ndispl_final = ndispl_final + nimg
          call get_gradient_derivs(self, env, step, ndispl0, ndispl_final, &
             & displdir, mol0, chk0, g0, .false., g, dip0, alpha0, dipdir, poldir)
+         call env%check(terminate_run)
+         if (terminate_run) return
          call gen_local_hessian(env, ndispl_final, distmat, displdir, g, dmax, hess)
+         call env%check(terminate_run)
+         if (terminate_run) return
          call lr_loop(env, ndispl_final, g, hess, displdir, final_err)
       end if
    end if
