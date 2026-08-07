@@ -114,7 +114,7 @@ int *                  NormalAxesCounts      = NULL ;
 int *                  ImproperAxesCounts    = NULL ;
 int                    BadOptimization       = 0 ;
 char *                 SymmetryCode          = "" ;
-char                   MaxRotAxis[8]         = "" ;
+char                   MaxRotAxis[12]        = "" ;   /* "C" + any int + NUL */
 /*
  *    Statistics
  */
@@ -1841,7 +1841,8 @@ StatAccept            = 0 ;
          strcpy(symbol,"C1");
       }
       else {
-         strcpy(symbol,MaxRotAxis);
+         /* symbol is 6 bytes on the Fortran side, see get_schoenflies */
+         snprintf(symbol,6,"%s",MaxRotAxis);
       }
     }
     }
