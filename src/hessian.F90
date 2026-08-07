@@ -87,7 +87,7 @@ subroutine numhess( &
    real(wp) :: sum1,sum2,trdip(3),dipole(3)
    real(wp) :: trpol(3),sl(3,3)
    integer  :: n3,i,j,k,ic,jc,ia,ja,ii,jj,info,lwork,a,b,ri,rj
-   integer  :: nread,kend,lowmode
+   integer  :: nread,kend,lowmode,nzero
    integer  :: nonfrozh
    integer  :: fixmode
    integer, allocatable :: nb(:,:)
@@ -429,6 +429,7 @@ subroutine numhess( &
       write(env%unit,'(1x,a)') 'projected vibrational frequencies (cm⁻¹)'
    endif
    k=0
+   izero=[(i, i=1,n3)]
    do i=1,n3
       ! Eigenvalues in atomic units, convert to wavenumbers
       res%freq(i)=autorcm*sign(sqrt(abs(res%freq(i))),res%freq(i))
@@ -437,6 +438,7 @@ subroutine numhess( &
          izero(k)=i
       endif
    enddo
+   nzero=k
 
    ! scale frequencies
    if (set%runtyp.eq.p_run_bhess) then
@@ -467,6 +469,10 @@ subroutine numhess( &
                izero(i)=i
             enddo
             res%freq(1:kend)=0
+         else if (nzero < kend) then
+            call env%error('Too few rot/trans modes found, hessian is unusable', &
+               & source)
+            return
          endif
          do k=1,kend
             h(1:n3,k)=res%hess(1:n3,izero(k))

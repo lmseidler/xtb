@@ -40,6 +40,13 @@ module xtb_bmatrix
 
 contains
 
+!> Clamp a cosine to [-1, 1], rounding can push it outside and make acos NaN
+elemental function clamp(co) result(c)
+   real(wp), intent(in) :: co
+   real(wp) :: c
+   c = min(1.0_wp, max(-1.0_wp, co))
+end function clamp
+
 !> Wilson B matrix for bonds
 pure function bmat_bond(vec) result(bmat)
    real(wp), intent(in) :: vec(3)
@@ -199,7 +206,7 @@ pure function bmat_outofplane(xyz) result(bt)
    e43 = r3 / q43
 
 !  angle between e43 and e42
-   cosfi1 = dot_product(e43, e42)
+   cosfi1 = clamp(dot_product(e43, e42))
    fi1 = acos(cosfi1)
 
 !  dirty exit when 2-3-4 collinear
@@ -259,7 +266,7 @@ pure function oop_angle(xyz) result(theta)
    q43 = norm2(r3)
    e43 = r3 / q43
 
-   cosfi1 = dot_product(e43, e42)
+   cosfi1 = clamp(dot_product(e43, e42))
    fi1 = acos(cosfi1)
 
    if (abs(fi1-pi) < tol_collinear) then
@@ -312,6 +319,7 @@ pure function bend_angle(xyz) result(fir)
       co = co + brij(i, 1) * brjk(i, 2)
       crap = crap + (brjk(i, 2)+brij(i, 1))**2
    end do
+   co = clamp(co)
    if (sqrt(crap) < tol_bend) then
       fir = pi - asin(sqrt(crap))
    else
@@ -342,6 +350,7 @@ pure function bmat_bend(xyz) result(bf)
       co = co + brij(i, 1) * brjk(i, 2)
       crap = crap + (brjk(i, 2)+brij(i, 1))**2
    end do
+   co = clamp(co)
    if (sqrt(crap) < tol_bend) then
       fir = pi - asin(sqrt(crap))
       si = sqrt(crap)
