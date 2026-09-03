@@ -51,8 +51,6 @@ subroutine numhess( &
    use xtb_fixparam
    use xtb_metadynamic
 
-   use xtb_axis, only : axis
-
    use xtb_ptb_calculator, only: TPTBCalculator, newPTBcalculator
 
    implicit none
@@ -170,9 +168,7 @@ subroutine numhess( &
       write(env%unit, '(a)')
    end if
 
-   res%linear=.false.
-   call axis(mol%n,mol%at,mol%xyz,aa,bb,cc)
-   if(cc.lt.1.d-10) res%linear=.true.
+   res%linear = mol%linear
    step2=0.5_wp/step
    calc%accuracy=set%accu_hess ! set SCC accuracy for numerical Hessian !
 

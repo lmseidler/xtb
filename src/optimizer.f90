@@ -137,7 +137,6 @@ subroutine ancopt(env,ilog,mol,chk,calc, &
 
    use xtb_setmod, only : int2optlevel
 
-   use xtb_axis, only : axis2
    use xtb_hessian, only : trproj,rdhess
    use xtb_readin
    use xtb_lsrmsd
@@ -250,8 +249,8 @@ subroutine ancopt(env,ilog,mol,chk,calc, &
    !> step size for numerical Hessian
    real(wp) :: step_hess
 
-   real(wp) :: step,amu2au,au2cm,dumi,dumj,damp,edum,thr,aaa,bbb
-   real(wp) :: energy,acc,rij(3),t1,t0,w1,w0,ccc
+   real(wp) :: step,amu2au,au2cm,damp,edum,thr
+   real(wp) :: energy,acc,rij(3),t1,t0,w1,w0
 
    integer  :: n3,i,j,k,l,jjj,ic,jc,ia,ja,ii,jj,info
    integer  :: nread,itry,iii
@@ -355,13 +354,10 @@ subroutine ancopt(env,ilog,mol,chk,calc, &
       end select
    end if
 
-   ! determine if linear molecule via rotational constants !
-   call axis2(mol%n,mol%xyz,aaa,bbb,ccc,dumi,dumj)
-   if (ccc.lt.1.d-10) then
-      linear = .true.
+   linear = mol%linear
+   if (linear) then
       nvar = nat3 - 5
    else
-      linear = .false.
       nvar = nat3 - 6
    endif
 

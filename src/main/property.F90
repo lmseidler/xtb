@@ -1269,7 +1269,7 @@ module xtb_propertyoutput
       use xtb_mctc_convert
       use xtb_readin
       use xtb_setparam
-      use xtb_axis, only: axis2
+      use xtb_axis, only: axis2, is_linear
       use xtb_thermo
       implicit none
       integer, intent(in) :: iunit
@@ -1329,8 +1329,9 @@ module xtb_propertyoutput
 
    call axis2(nat,xyz,aa,bb,cc,avmom,wt)
 
+      linear = is_linear(xyz)
+
       nvib_theo = 3 * nat - 6
-      if (cc < 1.d-10) linear = .true.
       if (linear) nvib_theo = 3 * nat - 5
 
       if (aa + bb + cc < 1.d-6) then

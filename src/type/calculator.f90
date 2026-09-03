@@ -382,11 +382,11 @@ subroutine hessian_odlr(self, env, mol0, chk0, step, hess, final_err, dipgrad, p
    deallocate (work)
    allocate (work(lwork))
    call dsyev('V', 'U', 3, ax, 3, inertia, work, lwork, info)
-   linear = any(inertia < 1.0e-4_wp)
+   linear = mol0%linear
 
    ! rotational displacements
    do i = 1, 3
-      if (inertia(i) < 1e-4_wp) cycle ! skips one mode if linear
+      if (inertia(i) < 1e-4_wp .and. linear) cycle ! skips one mode if linear
       Ntr = Ntr + 1
       do j = 1, mol0%n
          cross = crossProd(ax(:, i), mol0%xyz(:, j) - barycenter(:))
