@@ -25,6 +25,7 @@ program tester
    use test_coulomb, only : collect_coulomb
    use test_dftd3, only : collect_dftd3
    use test_dftd4, only : collect_dftd4
+   use test_detrotra, only : collect_detrotra
    use test_docking, only : collect_docking
    use test_eeq, only : collect_eeq
    use test_gfn0, only : collect_gfn0
@@ -41,6 +42,7 @@ program tester
    use test_pbc_tools, only : collect_pbc_tools
    use test_peeq, only : collect_peeq
    use test_ptb, only: collect_ptb
+   use test_random, only : collect_random
    use test_repulsion, only : collect_repulsion
    use test_symmetry, only : collect_symmetry
    use test_tblite, only : collect_tblite
@@ -65,6 +67,7 @@ program tester
       new_testsuite("coulomb", collect_coulomb), &
       new_testsuite("dftd3", collect_dftd3), &
       new_testsuite("dftd4", collect_dftd4), &
+      new_testsuite("detrotra", collect_detrotra), &
       new_testsuite("docking", collect_docking), &
       new_testsuite("eeq", collect_eeq), &
       new_testsuite("gfn0", collect_gfn0), &
@@ -81,6 +84,7 @@ program tester
       new_testsuite("pbc-tools", collect_pbc_tools), &
       new_testsuite("peeq", collect_peeq), &
       new_testsuite("ptb", collect_ptb), &
+      new_testsuite("random", collect_random), &
       new_testsuite("repulsion", collect_repulsion), &
       new_testsuite("symmetry", collect_symmetry), &
       new_testsuite("tblite", collect_tblite), &
