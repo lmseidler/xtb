@@ -31,6 +31,7 @@ module xtb_type_calculator
    & lr_loop, gen_displdir, get_vdw_neighbor_list, find_projected_imag_modes
    use xtb_modelhessian_swart, only : TSwartModelHessian
    use xtb_type_setvar, only : modhess_setvar
+   use xtb_setparam, only : set
    use xtb_param_uffvdwrad, only : get_rad
    use xtb_param_covalentrad, only : get_cov_rad
    implicit none
@@ -279,7 +280,6 @@ subroutine hessian_odlr(self, env, mol0, chk0, step, hess, final_err, dipgrad, p
    real(wp), parameter :: dmax = 1.0_wp, imagthr = eps2
    real(wp), parameter :: identity3(3, 3) = reshape([1, 0, 0, 0, 1, 0, 0, 0, 1], shape(identity3))
    ! iterative imaginary-frequency repair parameters
-   real(wp), parameter :: neg_sig_min_rcm = 5.0_wp, neg_add_cutoff_rcm = 200.0_wp
    integer, parameter :: max_neg_round = 6, max_neg_add_per_round = 6
    logical, parameter :: iterative_neg_mode = .true.
 
@@ -517,7 +517,7 @@ subroutine hessian_odlr(self, env, mol0, chk0, step, hess, final_err, dipgrad, p
 
       do neg_round = 1, max_neg_round
          call find_projected_imag_modes(env, mol0, hess, linear, ndiag_window, &
-            & cand_modes, cand_freqs, nmodes_det)
+            & -set%imagmin_hess, cand_modes, cand_freqs, nmodes_det)
          call env%check(terminate_run)
          if (terminate_run) exit
 
@@ -528,9 +528,11 @@ subroutine hessian_odlr(self, env, mol0, chk0, step, hess, final_err, dipgrad, p
          ! select & orthogonalize candidates against existing displdir and each other
          nadd = 0
          do j = 1, nmodes_det
+            ! note that this might not work as expected if there are many small
+            ! imaginary modes
             if (nadd >= max_neg_add_per_round) exit
             if (ndispl_final + nadd >= N) exit
-            if (cand_freqs(j) < -neg_add_cutoff_rcm) cycle
+            if (cand_freqs(j) < set%imagmax_hess) cycle
             vscratch = cand_modes(:, j)
             do k = 1, ndispl_final
                vdot = mctc_dot(displdir(:, k), vscratch)

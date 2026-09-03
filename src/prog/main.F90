@@ -1970,6 +1970,22 @@ contains
          case ('--o1nh')
             set%o1numhess = .true.
 
+         case ('--imagmin')
+            call args%nextArg(sec)
+            if (allocated(sec)) then
+               call set_hess(env, 'imagmin', '-'//sec)
+            else
+               call env%error("Imaginary significance floor is missing", source)
+            end if
+
+         case ('--imagmax')
+            call args%nextArg(sec)
+            if (allocated(sec)) then
+               call set_hess(env, 'imagmax', '-'//sec)
+            else
+               call env%error("Imaginary repair cutoff is missing", source)
+            end if
+
          case ('--omd')
             call set_runtyp('omd')
             call set_opt(env, 'optlevel', '-1')

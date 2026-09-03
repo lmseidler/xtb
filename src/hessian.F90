@@ -702,6 +702,7 @@ subroutine distort(mol,freq,u)
    use xtb_mctc_filetypes, only : generateFileName
    use xtb_type_molecule
    use xtb_io_writer, only : writeMolecule
+   use xtb_setparam, only : set
    implicit none
    type(TMolecule), intent(inout) :: mol
    real(wp) u(:,:),freq(:)
@@ -715,7 +716,7 @@ subroutine distort(mol,freq,u)
 
    n3=3*len(mol)
    ! cut-off for what is considered to be imag
-   thr=5.0
+   thr=abs(set%imagmin_hess)
 
    imag=0
    do i=1,n3

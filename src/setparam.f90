@@ -345,6 +345,10 @@ module xtb_setparam
    real(wp) :: scale_hess = 1.0_wp
    ! Use O1NumHess for Hessian
    logical :: o1numhess = .false.
+   ! frequencies below this value are treated as numerical noise
+   real(wp) :: imagmin_hess = -5.0_wp
+   ! frequencies below this value are left to the regular Hessian path
+   real(wp) :: imagmax_hess = -200.0_wp
 
 !  switch on gbsa for solvent if second argument is a valid solvent name
    type(TSolvInput) :: solvInput

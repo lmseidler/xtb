@@ -688,12 +688,13 @@ end subroutine gen_displdir
 !> vibrational frequency path in src/hessian.F90. Returns Cartesian
 !> displacement directions and frequencies in cm^-1 (negative = imaginary).
 !> Linear molecules skip projection (matching src/hessian.F90)
-subroutine find_projected_imag_modes(env, mol, hess, linear, max_modes, modes, freqs, nmodes)
+subroutine find_projected_imag_modes(env, mol, hess, linear, max_modes, sig_min_rcm, modes, freqs, nmodes)
    type(TEnvironment), intent(inout) :: env
    type(TMolecule), intent(in) :: mol
    real(wp), intent(in) :: hess(:, :)
    logical, intent(in) :: linear
    integer, intent(in) :: max_modes
+   real(wp), intent(in) :: sig_min_rcm
    real(wp), intent(out) :: modes(:, :)
    real(wp), intent(out) :: freqs(:)
    integer, intent(out) :: nmodes
@@ -704,7 +705,6 @@ subroutine find_projected_imag_modes(env, mol, hess, linear, max_modes, modes, f
    integer, allocatable :: iwork(:), ifail(:)
    real(wp) :: freq
    character(len=128) :: msg
-   real(wp), parameter :: neg_sig_min_rcm = 5.0_wp
 
    nat = mol%n
    N = 3 * nat
@@ -776,7 +776,7 @@ subroutine find_projected_imag_modes(env, mol, hess, linear, max_modes, modes, f
 
    do i = 1, m_eig
       freq = autorcm * sign(sqrt(abs(eigval(i))), eigval(i))
-      if (freq < -neg_sig_min_rcm) then
+      if (freq < -sig_min_rcm) then
          if (nmodes >= max_modes) exit
          nmodes = nmodes + 1
          freqs(nmodes) = freq

@@ -286,6 +286,18 @@ subroutine help(iunit)
    "--o1nh",&
    "    perform the numerical hessian calculation using the ODLR approximation (O1NumHess)",&
    "",&
+   "--imagmin REAL",&
+   "    magnitudes below this value (cm⁻¹) are ignored in the O1NumHess",&
+   "    imaginary frequency repair (default 5)",&
+   "",&
+   "--imagmax REAL",&
+   "    deepest imaginary frequency (cm⁻¹) considered in the O1NumHess",&
+   "    imaginary frequency repair (default 200)",&
+   "",&
+   "--ithr REAL",&
+   "    imaginary frequencies between this cutoff (cm⁻¹) and zero are treated",&
+   "    as vibrations in the RRHO calculation (default 20)",&
+   "",&
    "--md",&
    "    molecular dynamics simulation on start geometry",&
    "",&
