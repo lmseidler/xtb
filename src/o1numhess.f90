@@ -84,7 +84,10 @@ subroutine gen_local_hessian(env, ndispl_final, distmat, displdir, g, dmax, hess
    !> Output Hessian matrix
    real(wp), intent(out) :: hess_out(:, :)
 
-   real(wp), parameter :: lam = 1.0e-2_wp, bet = 1.5_wp, ddmax = 5.0_wp
+   ! regularization parameters
+   real(wp), parameter :: lam = 1.0e-2_wp, bet = 1.5_wp
+   ! cutoff parameter for Hessian elements penalty range
+   real(wp), parameter :: ddmax = 5.0_wp
 
    ! Local work arrays
    type(odlr_operator_data) :: ctx
@@ -439,7 +442,7 @@ subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
    real(wp), intent(inout) :: displdir(n, n)
    !> Final number of displacements
    integer, intent(out) :: ndispl_final
-   !> LAPACK error code
+   !> Error status
    integer, intent(out) :: ierr
    ! Local variables
    integer :: i, j, k, p, q, nnb, info, n_curr, idx, locind, qn, m_eig
@@ -578,18 +581,16 @@ subroutine gen_displdir(n, ndispl0, h0, max_nb, nblist, nbcounts, &
          call lapack_syevx("V", "I", "U", locind, projmat_local, max_nb, &
             & 0.0_wp, 0.0_wp, locind, locind, 0.0_wp, m_eig, loceigs, eigvec_local, &
             & max_nb, work_local, size(work_local), iwork_local, ifail_local, info)
-         if (info /= 0 .or. m_eig /= 1) then
+         if (info > 0) then
             !$omp critical
-            if (ierr == 0) then
-               if (info /= 0) then
-                  ierr = info
-               else
-                  ierr = -1
-               end if
-            end if
+            if (ierr == 0) ierr = info
             !$omp end critical
-            cycle
+         else if (m_eig /= 1) then
+            !$omp critical
+            if (ierr == 0) ierr = -1
+            !$omp end critical
          end if
+         if (ierr /= 0) cycle
          ! Store the lifted eigenvector for the serial phase.
          locev_store(1:nnb, j) = 0.0_wp
          do p = 1, locind
@@ -702,6 +703,7 @@ subroutine find_projected_imag_modes(env, mol, hess, linear, max_modes, modes, f
       & eigval(:), eigvec(:, :), work(:), dummy_mode(:, :)
    integer, allocatable :: iwork(:), ifail(:)
    real(wp) :: freq
+   character(len=128) :: msg
    real(wp), parameter :: neg_sig_min_rcm = 5.0_wp
 
    nat = mol%n
@@ -759,7 +761,15 @@ subroutine find_projected_imag_modes(env, mol, hess, linear, max_modes, modes, f
    call lapack_syevx("V", "I", "U", N, Hmw, N, 0.0_wp, 0.0_wp, 1, ndiag, 0.0_wp, &
       & m_eig, eigval, eigvec, N, work, size(work), iwork, ifail, info)
    if (info /= 0) then
-      call env%warning("dsyevx failed", source)
+      if (info > 0) then
+         write (msg, '(a, i0, a)') &
+            & "DSYEVX failed to converge for ", info, &
+            & " eigenvector(s) while searching for imaginary modes"
+         call env%warning(trim(msg), source)
+      else
+         call env%error("Internal error: illegal argument in DSYEVX call "//&
+            & "while searching for imaginary modes", source)
+      end if
       nmodes = 0
       return
    end if

@@ -27,6 +27,7 @@ subdir('io')
 subdir('iff')
 subdir('main')
 subdir('mctc')
+subdir('model_hessian')
 subdir('param')
 subdir('prog')
 subdir('ptb')
@@ -106,13 +107,6 @@ srcs += files(
   'mdoptim.f90',
   'metadynamic.f90',
   'modef.f90',
-  'model_hessian/type.f90',
-  'model_hessian/shared.f90',
-  'model_hessian/eeq.f90',
-  'model_hessian/internal.f90',
-  'model_hessian/gff.f90',
-  'model_hessian/lindh.f90',
-  'model_hessian/swart.f90',
   'neighbor.f90',
   'o1numhess.f90',
   'onetri.f90',

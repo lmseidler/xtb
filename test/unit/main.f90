@@ -59,9 +59,9 @@ program tester
    stat = 0
 
    testsuites = [ &
-       new_testsuite("atomlist", collect_atomlist), &
-       new_testsuite("bmatrix", collect_bmatrix), &
-       new_testsuite("coordinationnumber", collect_coordinationnumber), &
+      new_testsuite("atomlist", collect_atomlist), &
+      new_testsuite("bmatrix", collect_bmatrix), &
+      new_testsuite("coordinationnumber", collect_coordinationnumber), &
       new_testsuite("coulomb", collect_coulomb), &
       new_testsuite("dftd3", collect_dftd3), &
       new_testsuite("dftd4", collect_dftd4), &

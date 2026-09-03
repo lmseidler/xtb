@@ -110,11 +110,11 @@ subroutine broyden(n,q,qlast,dq,dqlast,iter,maxiter,&
    df(it1,:)=dq-dqlast
    inv=sqrt(dot_product(df(it1,:),df(it1,:)))
    !     no change in the residual carries no new information for the update,
-   !     normalizing would divide by zero: fall back to simple damping
+   !     normalizing would divide by zero: take the full step to the new charges
    if (inv < 1.0d-14) then
       dqlast = dq
       qlast = q
-      q = q + alpha * dq
+      q = q + dq
       return
    endif
    inv=1.0d0 / inv

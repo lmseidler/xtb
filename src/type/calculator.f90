@@ -295,6 +295,7 @@ subroutine hessian_odlr(self, env, mol0, chk0, step, hess, final_err, dipgrad, p
       & rot_norm, omega(3, 3), dalpha(3, 3)
    logical :: terminate_run, linear, do_dipgrad, do_polgrad
    integer, allocatable :: nbcounts(:)
+   character(len=128) :: msg
    integer :: N, i, j, k, Ntr, info, lwork, ndispl_final, max_nb, ndispl0, nimg, rmode
    ! iterative repair locals
    integer :: neg_round, nadd, nmodes_det, prev_nimg, ndiag_window
@@ -312,6 +313,7 @@ subroutine hessian_odlr(self, env, mol0, chk0, step, hess, final_err, dipgrad, p
    block
       type(TSwartModelHessian) :: model_hessian
       type(modhess_setvar) :: modh
+      ! original parameters kept from setparam.f90 for Lindh-D2 model Hessian
       modh = modhess_setvar(kr=0.4000_wp, kf=0.1300_wp, kt=0.0075_wp, &
          & ko=0.16_wp, kd=0.0_wp, kq=0.0_wp, rcut=70.0_wp, s6=20.0_wp)
       call model_hessian%compute(env, mol%xyz, mol%n, h0, mol%at, modh)
@@ -472,7 +474,15 @@ subroutine hessian_odlr(self, env, mol0, chk0, step, hess, final_err, dipgrad, p
    call gen_displdir(N, ndispl0, h0, max_nb, neighborlist, nbcounts, eps2, eps, &
       & displdir, ndispl_final, info)
    if (info /= 0) then
-      call env%error("DSYEVX failed while generating displacement directions", source)
+      if (info > 0) then
+         write (msg, '(a, i0, a)') &
+            & "DSYEVX failed to converge for ", info, &
+            & " eigenvector(s) while generating displacement directions"
+      else
+         write (msg, '(a, i0, a)') &
+            & "Internal error while generating displacement directions (code ", info, ")"
+      end if
+      call env%error(trim(msg), source)
       return
    end if
 
