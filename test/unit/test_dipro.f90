@@ -31,7 +31,9 @@ subroutine collect_dipro(testsuite)
 
    testsuite = [ &
          !! function that registers a new unit test -> result unittest_type object
-      new_unittest("J_ab,eff", test_dipro_jabeff) &
+      new_unittest("J_ab,eff", test_dipro_jabeff), &
+      new_unittest("J_ab,eff PTB", test_dipro_ptb), &
+      new_unittest("J_ab,eff PTB monomer scaled", test_dipro_ptb_paper) &
       ]
 
 end subroutine collect_dipro
@@ -115,5 +117,86 @@ subroutine test_dipro_jabeff(error)
    call check_(error,dipro%totjab(1),0.119_wp, thr=thr)
 
 endsubroutine test_dipro_jabeff
+
+!> Ethen dimer stacked at 3.5 Angstrom, PTB with projected site energies
+subroutine test_dipro_ptb(error)
+   use xtb_mctc_accuracy, only : wp
+   use xtb_dipro, only: jab_input
+   type(error_type), allocatable, intent(out) :: error
+   type(jab_input)  :: dipro
+
+   call run_ethen_ptb(error, dipro)
+   if (allocated(error)) return
+   call check_(error,dipro%totjab(1),0.00785_wp, thr=1.0e-3_wp)
+   if (allocated(error)) return
+   call check_(error,dipro%totjab(2),0.2792_wp, thr=2.8e-3_wp)
+
+end subroutine test_dipro_ptb
+
+!> Ethen dimer with PTB, monomer site energies and scaled J_ab as in the PTB DIPRO paper
+subroutine test_dipro_ptb_paper(error)
+   use xtb_mctc_accuracy, only : wp
+   use xtb_dipro, only: jab_input
+   type(error_type), allocatable, intent(out) :: error
+   type(jab_input)  :: dipro
+
+   dipro%monomer_energies = .true.
+   dipro%scale = 1.921_wp
+   call run_ethen_ptb(error, dipro)
+   if (allocated(error)) return
+   call check_(error,dipro%totjab(1),0.8421_wp, thr=8.4e-3_wp)
+   if (allocated(error)) return
+   call check_(error,dipro%totjab(2),0.4643_wp, thr=4.6e-3_wp)
+
+end subroutine test_dipro_ptb_paper
+
+!> DIPRO with PTB for the ethen dimer stacked at 3.5 Angstrom
+subroutine run_ethen_ptb(error, dipro)
+   use xtb_mctc_accuracy, only : wp
+   use xtb_mctc_convert, only : aatoau
+   use xtb_type_environment
+   use xtb_type_molecule
+   use xtb_dipro, only: get_jab, jab_input
+   use xtb_tblite_calculator, only : TTBLiteInput
+   type(error_type), allocatable, intent(out) :: error
+   type(jab_input), intent(inout) :: dipro
+   type(TMolecule)  :: mol
+   type(TEnvironment)       :: env
+   type(TTBLiteInput) :: tblite
+   !> fragments to be determined in call get_jab
+   integer, allocatable :: splitlist(:)
+   integer, parameter :: nat = 12
+   integer, parameter :: at(nat) = [6,6,1,1,1,1,6,6,1,1,1,1]
+   real(wp), parameter :: xyz(3,nat) = reshape(aatoau*[&
+      &   0.000000_wp,  0.000000_wp,  0.000000_wp, &
+      &   1.332000_wp,  0.000000_wp,  0.000000_wp, &
+      &  -0.574301_wp,  0.000000_wp, -0.928785_wp, &
+      &  -0.574301_wp,  0.000000_wp,  0.928785_wp, &
+      &   1.906301_wp,  0.000000_wp,  0.928785_wp, &
+      &   1.906301_wp,  0.000000_wp, -0.928785_wp, &
+      &  -0.000000_wp,  3.500000_wp,  0.000000_wp, &
+      &   1.332000_wp,  3.500000_wp, -0.000000_wp, &
+      &  -0.574301_wp,  3.500000_wp,  0.928785_wp, &
+      &  -0.574301_wp,  3.500000_wp, -0.928785_wp, &
+      &   1.906301_wp,  3.500000_wp, -0.928785_wp, &
+      &   1.906301_wp,  3.500000_wp,  0.928785_wp], shape(xyz))
+   logical :: exitRun
+
+   if (.not.get_xtb_feature('tblite')) then
+      call skip_test(error, 'tblite libary not available.')
+      return
+   end if
+
+   call init(env)
+   call init(mol, at, xyz)
+   mol%chrg = 0.0_wp
+   tblite%method = 'ptb'
+   dipro%othr = 0.1_wp
+
+   call get_jab(env,tblite,mol,splitlist,dipro)
+   call env%check(exitRun)
+   if (exitRun) call test_failed(error, "DIPRO calculation with PTB failed")
+
+end subroutine run_ethen_ptb
 
 end module test_dipro

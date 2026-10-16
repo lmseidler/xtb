@@ -549,6 +549,12 @@ subroutine help_legacy
    write(id,'(3x,''    --dipro <thr> '','// &
    &          'x,''calculate dipro coupling integrals'')')
 
+   write(id,'(3x,''    --dipro-site <mode>'','// &
+   &          'x,''site energies in dipro J_eff: projected (default) or monomer'')')
+
+   write(id,'(3x,''    --dipro-scale <f>'','// &
+   &          'x,''scale J_ab in dipro J_eff (default 1.0)'')')
+
    write(id,'(3x,''    --siman       '','// &
    &          'x,''conformational search'')')
 

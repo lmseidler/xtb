@@ -32,17 +32,12 @@ module xtb_dipro
    use xtb_dipro_bondorder, only : get_wiberg_bondorder
    use xtb_dipro_fragment, only : get_wiberg_fragment
    use xtb_dipro_output, only : format_list, to_string
-   use xtb_dipro_xtb, only : get_calculator
-   use tblite_basis_type, only : get_cutoff, basis_type
+   use xtb_dipro_xtb, only : get_singlepoint
+   use tblite_basis_type, only : basis_type
    use tblite_blas, only : dot, gemv, gemm
    use tblite_context_type, only : context_type
-   use tblite_cutoff, only : get_lattice_points
-   use tblite_integral_native_integrals, only : get_overlap
    use tblite_output_format, only : format_string
-   use tblite_wavefunction_type, only : wavefunction_type, new_wavefunction, &
-      & get_density_matrix
-   use tblite_xtb_calculator, only : xtb_calculator
-   use tblite_xtb_singlepoint, only : xtb_singlepoint
+   use tblite_wavefunction_type, only : wavefunction_type
 #endif
    implicit none
    private
@@ -64,13 +59,15 @@ module xtb_dipro
       real(wp) :: accuracy = 1.0_wp
       !> Output verbosity
       integer :: verbosity = 2
+      !> Use monomer orbital energies instead of projected site energies in J_ab,eff
+      logical :: monomer_energies = .false.
+      !> Scaling factor applied to J_ab in J_ab,eff
+      real(wp) :: scale = 1.0_wp
       !> total j_ab,eff in eV for test module
       real(wp) :: totjab(3)
    end type jab_input
 
    character(len=*), parameter :: source = 'xtb_dipro'
-   !> Conversion factor from temperature to energy (Boltzmann's constant in atomic units)
-   real(wp), parameter :: ktoau = 3.166808578545117e-06_wp
 
 contains
 
@@ -91,32 +88,31 @@ subroutine get_jab(env, tblite, mol, fragment, dipro)
 #if WITH_TBLITE
    !> structure_type /= molecular structure
    type(structure_type) :: struc
-   type(error_type),allocatable :: error
 
    type(context_type) :: ctx
    type(basis_type) :: bas
-   !> fcalc is =xcalc just for fragments
-   type(xtb_calculator) :: xcalc
-   type(xtb_calculator), allocatable :: fcalc(:)
+   !> fbas is =bas just for fragments
+   type(basis_type), allocatable :: fbas(:)
    !> mfrag is =struc just for fragments
    type(structure_type), allocatable :: mfrag(:)
    type(wavefunction_type) :: wfn
    !> wfx is =wfn just for fragments
    type(wavefunction_type), allocatable :: wfx(:)
 
-   !> Molecular gradient, strain derivatives
-   real(wp), allocatable :: gradient(:, :), sigma(:,:), nel(:), homo(:,:)
-   real(wp), allocatable :: overlap(:, :), trans(:, :), wbo(:, :), chrg(:), p2mat(:,:), coeff2(:,:),loc(:,:)
+   real(wp), allocatable :: nel(:)
+   integer, allocatable :: homo(:,:)
+   real(wp), allocatable :: overlap(:, :), wbo(:, :), chrg(:), p2mat(:,:), coeff2(:,:),loc(:,:)
    real(wp), allocatable :: orbital(:, :, :), scmat(:, :), fdim(:, :), scratch(:), efrag(:),y(:,:),Edim(:,:)
    integer, allocatable :: spinfrag(:), start_index(:),end_index(:),orbprint(:)
 
    integer :: charge, stat, unit, ifr, nfrag, nao, i, j, k
 
-   logical :: exist
+   logical :: exist, exitRun
 
    character(3) :: adv='NO '
+   character(len=:), allocatable :: method
 
-   real(wp) :: energy, cutoff, jab, sab, jeff, Vtot(3)
+   real(wp) :: jab, sab, jeff, Vtot(3)
 
 !======================================================================================
 
@@ -126,17 +122,7 @@ subroutine get_jab(env, tblite, mol, fragment, dipro)
       tblite%method = 'gfn2'
       call env%warning("No method provided, falling back to default GFN2-xTB.", source)
    end if
-
-!=========================set up calculator===========================================   
-
-   call get_calculator(xcalc, struc, tblite%method, error)  
-   if (allocated(error)) then
-      call env%error(error%message, source)
-      return
-   end if
-   call new_wavefunction(wfn, struc%nat, xcalc%bas%nsh, xcalc%bas%nao, & 
-      & 1, set%etemp * ktoau)
-   wfn%nspin=1
+   method = tblite%method
 
 !=========================print Header===============================================
 
@@ -151,29 +137,27 @@ subroutine get_jab(env, tblite, mol, fragment, dipro)
    write(*,'(A,F4.0)') "charge of dimer : ", mol%chrg
    write(*,'(A,I2)') "unpaired e- of dimer : ", set%nalphabeta
 
-   call xtb_singlepoint(ctx, struc, xcalc, wfn, tblite%accuracy, energy,gradient,sigma,2)
-   if (ctx%failed()) then
-       call env%error("Single point calculation for dimer failed.", source)
+   call get_singlepoint(env, struc, method, tblite%accuracy, 2, bas, wfn, overlap)
+   call env%check(exitRun)
+   if (exitRun) then
+      call env%error("Single point calculation for dimer failed.", source)
       return
    end if
 
-   allocate(overlap(xcalc%bas%nao, xcalc%bas%nao),y(xcalc%bas%nao,2))
-   cutoff = get_cutoff(xcalc%bas)
-   call get_lattice_points(struc%periodic, struc%lattice, cutoff, trans) 
-   call get_overlap(struc, trans, cutoff, xcalc%bas, overlap)  
+   allocate(y(bas%nao,2))
 
 !==================set up fragments if not given by xcontrol=========================
 
    if (allocated(fragment)) then
    else
       !> wfn%density is [nao,nao,spin], pmat in wiberg bondorder is [nao,nao], thus pmat2 is introduced here     
-      allocate(wbo(struc%nat, struc%nat),p2mat(xcalc%bas%nao,xcalc%bas%nao))
-      do i=1,xcalc%bas%nao
-         do j=1,xcalc%bas%nao
+      allocate(wbo(struc%nat, struc%nat),p2mat(bas%nao,bas%nao))
+      do i=1,bas%nao
+         do j=1,bas%nao
             p2mat(i,j)=wfn%density(i,j,1)
          end do
       end do
-      call get_wiberg_bondorder(xcalc%bas, overlap, p2mat, wbo)
+      call get_wiberg_bondorder(bas, overlap, p2mat, wbo)
 
       allocate(fragment(struc%nat))
       call get_wiberg_fragment(fragment, wbo, 0.1_wp)
@@ -239,7 +223,7 @@ subroutine get_jab(env, tblite, mol, fragment, dipro)
 
 !=================================fragment calculations=============================================   
 
-   allocate(fcalc(nfrag))
+   allocate(fbas(nfrag))
    do ifr = 1, nfrag 
       call ctx%message("Calculation for fragment "//to_string(ifr))
       write(*,*) "------------------------------"
@@ -261,38 +245,28 @@ subroutine get_jab(env, tblite, mol, fragment, dipro)
       mfrag(ifr)%uhf = spinfrag(ifr)
       write(*,'(A,I2)') "unpaired e- of fragment : ", mfrag(ifr)%uhf
 
-      call get_calculator(fcalc(ifr), mfrag(ifr), tblite%method, error)
-      if (allocated(error)) then
-         call env%error(error%message, source)
-         return
-      end if
-      !> mol%charge is updated automatically from wfn by tblite library 
-      call new_wavefunction(wfx(ifr), mfrag(ifr)%nat, fcalc(ifr)%bas%nsh, fcalc(ifr)%bas%nao, &
-         & 1, set%etemp * ktoau)
-
-      !> mol%type (dimer) == mfrag%type (fragments), wfn (dimer) == wfx (fragments), calc (dimer)==fcalc(fragments)
-      wfx%nspin=1
-      call xtb_singlepoint(ctx, mfrag(ifr), fcalc(ifr), wfx(ifr), tblite%accuracy, energy)
-      if (ctx%failed()) then
+      call get_singlepoint(env, mfrag(ifr), method, tblite%accuracy, 1, fbas(ifr), wfx(ifr))
+      call env%check(exitRun)
+      if (exitRun) then
          call env%error("Single point calculation for fragment failed.", source)
          return
       end if
 
       nel(ifr)=wfx(ifr)%nel(1)+wfx(ifr)%nel(2)
 
-      ! Find HOMO index
-      homo(ifr,1) = merge(wfx(ifr)%nel(1)+1, wfx(ifr)%nel(1), mod(wfx(ifr)%nel(1), 1.0_wp) > 0.5_wp)
+      ! Find HOMO index, rounding fractional occupations above one half up and tolerating roundoff in nel
+      homo(ifr,1) = ceiling(wfx(ifr)%nel(1) - 0.5_wp)
       if (size(wfx(ifr)%nel, 1) == 2) then
-         homo(ifr,2) = merge(wfx(ifr)%nel(2)+1, wfx(ifr)%nel(2), mod(wfx(ifr)%nel(2), 1.0_wp) > 0.5_wp)
+         homo(ifr,2) = ceiling(wfx(ifr)%nel(2) - 0.5_wp)
       else
          homo(ifr,2) = homo(ifr,1)
       end if
 
 !==================================DIPRO==================================================
 
-      do j = 1, fcalc(ifr)%bas%nao
+      do j = 1, fbas(ifr)%nao
          !> coeff is [nao,nao,spin=1]
-         call unpack_coeff(xcalc%bas, fcalc(ifr)%bas, orbital(:, ifr, j), &
+         call unpack_coeff(bas, fbas(ifr), orbital(:, ifr, j), &
          & wfx(ifr)%coeff(:, j,1), fragment == ifr)
       end do 
    end do
@@ -318,9 +292,15 @@ subroutine get_jab(env, tblite, mol, fragment, dipro)
 
    call ctx%message("energy threshhold for near-degenerate orbitals near HOMO and LUMO &
            &considered for DIPRO: "//format_string(dipro%othr, '(f6.3)')//" eV")
+   if (dipro%monomer_energies) then
+      call ctx%message("site energies for J(AB,eff): monomer")
+   else
+      call ctx%message("site energies for J(AB,eff): projected")
+   end if
+   call ctx%message("scaling factor for J(AB) in J(AB,eff): "//format_string(dipro%scale, '(f10.4)'))
 
    do ifr=1,nfrag
-      do j = 1, fcalc(ifr)%bas%nao
+      do j = 1, fbas(ifr)%nao
          if (wfx(ifr)%emo(j,1) .ge. (wfx(ifr)%emo(homo(ifr,2),1) - dipro%othr/autoev) .and.&
            & wfx(ifr)%emo(j,1) .le. (wfx(ifr)%emo(homo(ifr,2)+1,1) + dipro%othr/autoev)) then
            if (start_index(ifr).eq.-1) then 
@@ -338,10 +318,11 @@ subroutine get_jab(env, tblite, mol, fragment, dipro)
 !> y_A^i = C_A^i * S_AB * C_AB                  orbital projection of monomer A onto dimer
 !> y_B^j = C_B^j * S_AB * C_AB                  orbital projection of monomer B onto dimer
 !> S_ab^ij = y_A^i * y_B^j                      projected overlap
-!> E_A^i = y_A^i * E_AB * y_A^i                 site energy monomeCALL execute_command_line('wc -l < file.txt > wc.txt' )r A
-!> E_B^j = y_B^j * E_AB * y_B^j                 site energy monomer B
+!> E_A^i = y_A^i * E_AB * y_A^i                 site energy monomer A (or monomer orbital energy eps_A^i)
+!> E_B^j = y_B^j * E_AB * y_B^j                 site energy monomer B (or monomer orbital energy eps_B^j)
 !> J_AB^ij = y_A^i * E_AB * y_B^j               coupling integral J_AB
-!> J_AB^ij effective = (J_AB^ij - (E_A^i + E_B^j) / 2 * S_ab^ij) / (1 - S_ab^ij * S_ab^ij)            
+!> J_AB^ij effective = (f * J_AB^ij - (E_A^i + E_B^j) / 2 * S_ab^ij) / (1 - S_ab^ij * S_ab^ij)
+!> f: scaling factor of J_AB (1 by default)
 !> A,B: monomers   AB: dimer
 !> i,j: orbitals of the monomers
 !> C: orbital coefficients     S: overlap matrix      E: orbital energy of the dimer
@@ -361,6 +342,7 @@ subroutine get_jab(env, tblite, mol, fragment, dipro)
       call gemv( Edim, y(:,1), scratch )
       !> E_mon=y1(j)*E_dim*y1(j)
       efrag(1)=dot( y(:,1), scratch)
+      if (dipro%monomer_energies) efrag(1) = wfx(1)%emo(j, 1)
 
       do k = start_index(2), end_index(2)
          orbprint(2)=homo(2,2)-k
@@ -372,13 +354,14 @@ subroutine get_jab(env, tblite, mol, fragment, dipro)
          call gemv( Edim, y(:,2), scratch )
          !> E_mon=y(ifr)*E_dim*y2(k)
          efrag(2)=dot( y(:,2), scratch)
+         if (dipro%monomer_energies) efrag(2) = wfx(2)%emo(k, 1)
 
          !> sab=y1(j)*y2(k)
          sab=dot( y(:,1), y(:,2) )
          !> jab=y1(j)*E_dim*y2(k)
          jab=dot( y(:,1), scratch )
 
-         jeff = (jab - sum(efrag) / nfrag * sab) / (1.0_wp - sab**2)
+         jeff = (dipro%scale * jab - sum(efrag) / nfrag * sab) / (1.0_wp - sab**2)
 
 !=======================================Printout============================================         
 
@@ -416,11 +399,11 @@ subroutine get_jab(env, tblite, mol, fragment, dipro)
          end do
          write(*,'(A)') "--------------------------------------"
 
-         call ctx%message("E_mon(orb) frag1 frag2"//format_string(efrag(1)*autoev, '(f20.3)')// &
-           &format_string(efrag(2)*autoev, '(f10.3)')//" eV")
-         call ctx%message("J(AB): "//format_string(jab*autoev, '(f20.3)')//" eV")    
+         call ctx%message("E_mon(orb) frag1 frag2"//format_string(efrag(1)*autoev, '(f20.6)')// &
+           &format_string(efrag(2)*autoev, '(f13.6)')//" eV")
+         call ctx%message("J(AB): "//format_string(jab*autoev, '(f20.6)')//" eV")    
          call ctx%message("S(AB): "//format_string(sab, '(f22.8)'))
-         call ctx%message("|J(AB,eff)|: "//format_string(abs(jeff)*autoev, '(f16.3)')//" eV")
+         call ctx%message("|J(AB,eff)|: "//format_string(abs(jeff)*autoev, '(f16.6)')//" eV")
          write(*,*) "  "
 
          !> Vtotal=sqrt(sum(jeff^2)) for 1. occ-->occ; 2. virt-->virt; 3. occ-->virt/virt-->occ transitions
@@ -440,10 +423,10 @@ subroutine get_jab(env, tblite, mol, fragment, dipro)
    dipro%totjab(3)=sqrt(Vtot(3))*autoev
    
    write(*,'(A)') ".............................................................................."
-   call ctx%message(":  total |J(AB,eff)| for hole transport (occ. MOs) :"//format_string(sqrt(Vtot(1))*autoev, '(f20.3)')//" eV  :")
+   call ctx%message(":  total |J(AB,eff)| for hole transport (occ. MOs) :"//format_string(sqrt(Vtot(1))*autoev, '(f20.6)')//" eV  :")
    call ctx%message(":  total |J(AB,eff)| for charge transport (unocc. MOs) :"//format_string(sqrt(Vtot(2))*autoev,& 
-          &'(f16.3)')//" eV  :")
-   call ctx%message(":  total |J(AB,eff)| for charge transfer (CT) :"//format_string(sqrt(Vtot(3))*autoev, '(f25.3)')//" eV  :")
+          &'(f16.6)')//" eV  :")
+   call ctx%message(":  total |J(AB,eff)| for charge transfer (CT) :"//format_string(sqrt(Vtot(3))*autoev, '(f25.6)')//" eV  :")
    write(*,'(A)') ".............................................................................."
 
    write(*,*) " "

@@ -326,7 +326,17 @@ NOTE: You can only select *one* runtyp, only the first runtyp will be used
 *--dipro* ['REAL']:: 
     the dimer projection method for the calculation of electronic coupling integrals between two fragments.
     'REAL' sets the threshold for nearly degenerate orbitals to still be considered (default = 0.1 eV).
-    
+    Available with GFN1-xTB, GFN2-xTB, IPEA1-xTB and PTB (*--ptb*).
+
+*--dipro-site* 'MODE'::
+    site energies used in the effective coupling J(AB,eff) of *--dipro*:
+    'projected' (default) projects the monomer orbitals onto the dimer Hamiltonian,
+    'monomer' uses the monomer orbital energies.
+
+*--dipro-scale* 'REAL'::
+    scaling factor f for J(AB) in J(AB,eff) = (f J(AB) - (e(A)+e(B))/2 S(AB)) / (1 - S(AB)^2) of *--dipro* (default = 1.0).
+    The PTB DIPRO reference values are obtained with *--ptb --dipro-site monomer --dipro-scale 1.921*.
+
 
 GENERAL
 ~~~~~~~

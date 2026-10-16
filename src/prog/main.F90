@@ -743,6 +743,7 @@ contains
       ! DIPRO calculation of coupling integrals for dimers
       if (dipro%diprocalc) then
          call start_timing(11)
+         if (set%mode_extrun == p_ext_ptb) tblite%method = "ptb"
          call get_jab(env, tblite, mol, splitlist, dipro)
          call env%checkpoint("Something in your DIPRO calculation went wrong.")
          call stop_timing_run
@@ -1666,6 +1667,29 @@ contains
             else
                call env%error("Compiled without support for tblite library. This is required for DIPRO", source)
                return
+            end if
+
+         case ('--dipro-site')
+            call args%nextArg(sec)
+            if (allocated(sec)) then
+               select case (sec)
+               case ('projected')
+                  dipro%monomer_energies = .false.
+               case ('monomer')
+                  dipro%monomer_energies = .true.
+               case default
+                  call env%error("Unknown site energy option '"//sec//"' for --dipro-site, use 'projected' or 'monomer'", source)
+               end select
+            else
+               call env%error("No site energy option provided for --dipro-site", source)
+            end if
+
+         case ('--dipro-scale')
+            call args%nextArg(sec)
+            if (allocated(sec)) then
+               if (getValue(env, sec, ddum)) dipro%scale = ddum
+            else
+               call env%error("Scaling factor in --dipro-scale option is missing", source)
             end if
 
          case ('--oniom')
